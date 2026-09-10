@@ -14,7 +14,7 @@
     },
     {
       "name": "internet_permission_reason",
-      "value": "连接远程 SSH 主机需要网络权限"
+      "value": "连接远程 SSH / FTP / VNC 主机需要网络权限"
     },
     {
       "name": "host_list_title",
@@ -59,6 +59,18 @@
     {
       "name": "host_private_key_placeholder",
       "value": "私钥路径或内容（后续接入）"
+    },
+    {
+      "name": "host_protocol",
+      "value": "协议"
+    },
+    {
+      "name": "vnc_password",
+      "value": "VNC 密码"
+    },
+    {
+      "name": "vnc_edit_hint",
+      "value": "VNC 默认端口 5900。真实远程桌面需后续接入 RFB Native 模块。"
     },
     {
       "name": "btn_save",
@@ -109,8 +121,68 @@
       "value": "请填写主机地址与用户名"
     },
     {
+      "name": "toast_invalid_host",
+      "value": "请填写主机地址"
+    },
+    {
       "name": "confirm_delete",
       "value": "确认删除该主机？"
+    },
+    {
+      "name": "ftp_go_up",
+      "value": "上级"
+    },
+    {
+      "name": "ftp_refresh",
+      "value": "刷新"
+    },
+    {
+      "name": "ftp_upload",
+      "value": "上传"
+    },
+    {
+      "name": "ftp_download",
+      "value": "下载"
+    },
+    {
+      "name": "ftp_loading",
+      "value": "加载中…"
+    },
+    {
+      "name": "ftp_error",
+      "value": "出错了"
+    },
+    {
+      "name": "ftp_not_connected",
+      "value": "FTP 未连接"
+    },
+    {
+      "name": "ftp_empty_dir",
+      "value": "此目录为空"
+    },
+    {
+      "name": "ftp_folder",
+      "value": "文件夹"
+    },
+    {
+      "name": "vnc_not_connected",
+      "value": "VNC 未连接"
+    },
+    {
+      "name": "vnc_native_note",
+      "value": "当前为 Mock 占位桌面。真实 RFB 协议需通过 NAPI 原生模块实现像素解码与输入注入。"
+    },
+    {
+      "name": "vnc_native_note_short",
+      "value": "真实 RFB 需 NAPI；触控/按键仅为 stub。"
+    },
+    {
+      "name": "vnc_placeholder_hint",
+      "value": "触摸此区域可触发 Mock 指针事件"
+    },
+    {
+      "name": "vnc_key_stub",
+      "value": "模拟按键"
     }
   ]
 }

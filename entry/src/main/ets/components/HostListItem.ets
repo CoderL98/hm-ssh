@@ -10,6 +10,20 @@ export struct HostListItem {
 
   build() {
     Row() {
+      // 协议徽章
+      Column() {
+        Text(this.host.protocolLabel())
+          .fontSize(10)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.White)
+      }
+      .width(40)
+      .height(40)
+      .borderRadius(8)
+      .justifyContent(FlexAlign.Center)
+      .backgroundColor(this.host.protocolBadgeColor())
+      .margin({ right: 10 })
+
       Column() {
         Text(this.host.displayName())
           .fontSize($r('app.float.body_font_size'))
@@ -21,6 +35,8 @@ export struct HostListItem {
           .fontSize($r('app.float.caption_font_size'))
           .fontColor($r('app.color.text_secondary'))
           .margin({ top: 4 })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)

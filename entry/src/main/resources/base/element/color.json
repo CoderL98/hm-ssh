@@ -43,6 +43,18 @@
     {
       "name": "empty_icon",
       "value": "#CCCCCC"
+    },
+    {
+      "name": "ftp_badge",
+      "value": "#E67E22"
+    },
+    {
+      "name": "vnc_badge",
+      "value": "#8E44AD"
+    },
+    {
+      "name": "vnc_desktop_bg",
+      "value": "#1A2332"
     }
   ]
 }

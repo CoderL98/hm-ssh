@@ -23,6 +23,7 @@ struct AccountPage {
   @State statusText: string = '';
   @State loggedIn: boolean = false;
   @State displayName: string = '';
+  @State lastSyncLabel: string = '';
 
   aboutToAppear(): void {
     const store = AuthStore.getInstance();
@@ -38,6 +39,35 @@ struct AccountPage {
     this.useMock = store.isUseMock();
     const u = store.getUser();
     this.displayName = u ? `${u.username}（${u.email}）` : '';
+    void this.refreshLastSyncLabel();
+  }
+
+  private async refreshLastSyncLabel(): Promise<void> {
+    try {
+      const ts = await CloudSyncServiceFactory.create().getLastSyncAt();
+      if (!ts || ts <= 0) {
+        this.lastSyncLabel = '尚未同步';
+        return;
+      }
+      const d = new Date(ts);
+      const pad = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
+      this.lastSyncLabel =
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+        `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch (_e) {
+      this.lastSyncLabel = '';
+    }
+  }
+
+  /** 注册密码与服务端 / CloudConfig.MIN_PASSWORD_LEN 对齐 */
+  private validateRegisterInput(): string | null {
+    if (this.mode !== 'register') {
+      return null;
+    }
+    if (this.password.length < CloudConfig.MIN_PASSWORD_LEN) {
+      return `密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`;
+    }
+    return null;
   }
 
   private surfacePage(): string {
@@ -102,6 +132,12 @@ struct AccountPage {
     if (this.busy) {
       return;
     }
+    const pwErr = this.validateRegisterInput();
+    if (pwErr) {
+      this.toast(pwErr);
+      this.statusText = pwErr;
+      return;
+    }
     this.busy = true;
     this.statusText = '';
     try {
@@ -120,7 +156,12 @@ struct AccountPage {
       try {
         const msg = await CloudSyncServiceFactory.create().syncAll();
         this.statusText = msg;
-        this.toast(msg);
+        if (msg.indexOf('已从云端合并') >= 0) {
+          this.toast('已从云端合并');
+        } else {
+          this.toast(msg);
+        }
+        await this.refreshLastSyncLabel();
       } catch (syncErr) {
         const m = syncErr instanceof Error ? syncErr.message : '同步失败';
         this.statusText = `已登录，同步跳过：${m}`;
@@ -158,7 +199,12 @@ struct AccountPage {
     try {
       const msg = await CloudSyncServiceFactory.create().syncAll();
       this.statusText = msg;
-      this.toast(msg);
+      if (msg.indexOf('已从云端合并') >= 0) {
+        this.toast('已从云端合并');
+      } else {
+        this.toast(msg);
+      }
+      await this.refreshLastSyncLabel();
     } catch (e) {
       const m = e instanceof Error ? e.message : '同步失败';
       this.toast(m);
@@ -282,6 +328,12 @@ struct AccountPage {
                 .fontSize(12)
                 .fontColor(this.textSecondary())
                 .width('100%')
+                .padding({ left: 16, right: 16, bottom: 8 })
+              Text(this.lastSyncLabel.length > 0 ?
+                `上次同步：${this.lastSyncLabel}` : '尚未同步')
+                .fontSize(12)
+                .fontColor(this.textSecondary())
+                .width('100%')
                 .padding({ left: 16, right: 16, bottom: 12 })
               Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
               Row() {
@@ -357,6 +409,13 @@ struct AccountPage {
               this.field($r('app.string.account_password'), this.password, (v: string) => {
                 this.password = v;
               }, true)
+              if (this.mode === 'register') {
+                Text($r('app.string.account_password_hint'))
+                  .fontSize(12)
+                  .fontColor(this.textSecondary())
+                  .width('100%')
+                  .padding({ left: 16, right: 16, bottom: 8 })
+              }
 
               Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
 

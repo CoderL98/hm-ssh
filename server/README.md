@@ -73,6 +73,7 @@ docker run --rm -p 8080:8080 \
 - `JWT_ACCESS_TTL_SECS` / `JWT_REFRESH_TTL_SECS`
 - `REDIS_URL` — 可选
 - `CORS_ORIGINS` — `*` 或逗号分隔源
+- `AUTH_RATE_LIMIT_PER_MIN` — 注册/登录每 IP 每分钟上限（默认 20）
 
 ## Sync semantics / 同步语义
 
@@ -80,6 +81,16 @@ docker run --rm -p 8080:8080 \
 - **Last-write-wins**：客户端以服务端时间戳为准；`PUT` 会覆盖并更新 `updated_at`。
 - 客户端合并策略见仓库根 README「云同步」：按条目 `updatedAt` 取较新者，再推回服务端。
 - **Secrets**：`PUT /sync/hosts` 会清空每条主机的 `password` / `privateKey`（及 `private_key`）后再落库；GET 同样保证不回传明文机密。
+
+## Rate limiting / 速率限制
+
+`POST /auth/register` 与 `POST /auth/login` 按客户端 IP（`X-Forwarded-For` / `X-Real-IP` / 直连）做进程内固定窗口限流；超限返回 **429**。默认 **20 次/分钟**，可由 `AUTH_RATE_LIMIT_PER_MIN` 调整。多实例部署时需改为 Redis 共享计数（尚未实现）。
+
+密码规则：注册至少 **8** 字符（与客户端 Mock / AccountPage 对齐）。
+
+## Refresh rotation / Refresh 轮换
+
+`POST /auth/refresh` 签发新的 access + refresh，并将**旧 refresh 的 jti** 写入缓存 denylist（TTL ≈ 旧 token 剩余寿命）。重放旧 refresh → 401。
 
 ## Session invalidation / 会话吊销
 
@@ -104,6 +115,7 @@ curl -s -X PUT localhost:8080/api/v1/sync/hosts \
 
 ```bash
 cargo check
+cargo test
 cargo run
 ```
 

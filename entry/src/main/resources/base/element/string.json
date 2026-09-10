@@ -339,6 +339,26 @@
     {
       "name": "account_sync_loading",
       "value": "同步中…"
+    },
+    {
+      "name": "account_password_hint",
+      "value": "密码至少 8 位（与云端一致）"
+    },
+    {
+      "name": "account_password_too_short",
+      "value": "密码至少 8 位"
+    },
+    {
+      "name": "account_last_sync",
+      "value": "上次同步"
+    },
+    {
+      "name": "account_sync_merged",
+      "value": "已从云端合并"
+    },
+    {
+      "name": "account_never_synced",
+      "value": "尚未同步"
     }
   ]
 }

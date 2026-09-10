@@ -8,6 +8,7 @@ import { AuthStore, cloudRequest } from './AuthService';
 const META_STORE = 'hm_ssh_sync_meta';
 const KEY_HOSTS_TS = 'hosts_server_updated_at';
 const KEY_SETTINGS_TS = 'settings_server_updated_at';
+const KEY_LAST_SYNC = 'last_sync_at';
 
 export interface SyncBlobResult {
   data: Object;
@@ -36,6 +37,7 @@ export interface ICloudSyncService {
   pullAndMergeSettings(): Promise<string>;
   pushSettings(): Promise<string>;
   syncAll(): Promise<string>;
+  getLastSyncAt(): Promise<number>;
 }
 
 export class HttpCloudSyncService implements ICloudSyncService {
@@ -48,7 +50,21 @@ export class HttpCloudSyncService implements ICloudSyncService {
   async syncAll(): Promise<string> {
     const a = await this.pullAndMergeHosts();
     const b = await this.pullAndMergeSettings();
+    await this.touchLastSync();
+    const merged = a.indexOf('已从云端合并') >= 0 || b.indexOf('已从云端合并') >= 0 ||
+      a.indexOf('已按服务端时间合并') >= 0 || b.indexOf('已应用云端') >= 0;
+    if (merged) {
+      return `已从云端合并；${a}；${b}`;
+    }
     return `${a}；${b}`;
+  }
+
+  async getLastSyncAt(): Promise<number> {
+    return this.getMeta(KEY_LAST_SYNC);
+  }
+
+  private async touchLastSync(): Promise<void> {
+    await this.setMeta(KEY_LAST_SYNC, Date.now());
   }
 
   async pullAndMergeHosts(): Promise<string> {
@@ -74,10 +90,14 @@ export class HttpCloudSyncService implements ICloudSyncService {
     const remoteHosts = remoteJson.map((j: HostJson) => HostConfig.fromJson(j));
 
     if (serverTs > localTs) {
+      const localDirty = localList.length > 0;
       const merged = mergeHostsByUpdatedAt(localList, remoteHosts);
       await store.replaceAll(merged);
       await this.setMeta(KEY_HOSTS_TS, serverTs);
       await this.pushHostsInternal(token);
+      if (localDirty) {
+        return `主机：已从云端合并（${merged.length} 条）`;
+      }
       return `主机：已按服务端时间合并（${merged.length} 条）`;
     }
 
@@ -125,7 +145,7 @@ export class HttpCloudSyncService implements ICloudSyncService {
     if (serverTs > localTs) {
       await theme.applyCloudSettings(data);
       await this.setMeta(KEY_SETTINGS_TS, serverTs);
-      return '设置：已应用云端';
+      return '设置：已从云端合并';
     }
     await this.pushSettingsInternal(token);
     return '设置：已上传本地到云端';
@@ -178,10 +198,31 @@ export class MockCloudSyncService implements ICloudSyncService {
     this.meta = await preferences.getPreferences(context, META_STORE);
   }
 
+  private lastSyncAt: number = 0;
+
   async syncAll(): Promise<string> {
     const a = await this.pullAndMergeHosts();
     const b = await this.pullAndMergeSettings();
+    this.lastSyncAt = Date.now();
+    if (this.meta) {
+      await this.meta.put(KEY_LAST_SYNC, this.lastSyncAt);
+      await this.meta.flush();
+    }
+    const merged = a.indexOf('Mock 合并') >= 0 || b.indexOf('已应用 Mock') >= 0;
+    if (merged) {
+      return `已从云端合并；${a}；${b}（Mock）`;
+    }
     return `${a}；${b}（Mock）`;
+  }
+
+  async getLastSyncAt(): Promise<number> {
+    if (this.lastSyncAt > 0) {
+      return this.lastSyncAt;
+    }
+    if (!this.meta) {
+      return 0;
+    }
+    return Number(await this.meta.get(KEY_LAST_SYNC, 0));
   }
 
   async pullAndMergeHosts(): Promise<string> {

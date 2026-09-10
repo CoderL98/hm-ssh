@@ -123,7 +123,7 @@ async fn put_sync(
 }
 
 /// Clear password / privateKey (and snake_case variants) on each host object.
-fn strip_host_secrets(data: Value) -> Value {
+pub(crate) fn strip_host_secrets(data: Value) -> Value {
     match data {
         Value::Array(items) => Value::Array(
             items
@@ -142,5 +142,33 @@ fn strip_host_secrets(data: Value) -> Value {
                 .collect(),
         ),
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn strip_clears_password_and_keys() {
+        let input = json!([
+            {"id": "h1", "password": "secret", "privateKey": "KEY", "private_key": "KEY2", "name": "demo"},
+            {"id": "h2", "name": "plain"}
+        ]);
+        let out = strip_host_secrets(input);
+        let arr = out.as_array().unwrap();
+        assert_eq!(arr[0]["password"], "");
+        assert_eq!(arr[0]["privateKey"], "");
+        assert_eq!(arr[0]["private_key"], "");
+        assert_eq!(arr[0]["name"], "demo");
+        assert_eq!(arr[1]["name"], "plain");
+        assert!(arr[1].get("password").is_none());
+    }
+
+    #[test]
+    fn strip_non_array_passthrough() {
+        let obj = json!({"password": "x"});
+        assert_eq!(strip_host_secrets(obj.clone()), obj);
     }
 }

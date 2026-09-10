@@ -1,13 +1,18 @@
 use crate::auth::password::{hash_password, verify_password};
-use crate::cache::{profile_key, revoke_key, session_key};
+use crate::cache::{jti_deny_key, profile_key, revoke_key, session_key};
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::routes::AuthUser;
 use crate::state::AppState;
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
+use axum::http::HeaderMap;
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::time::Duration;
+
+/// Shared password minimum (keep in sync with client MockAuthService / AccountPage).
+pub const MIN_PASSWORD_LEN: usize = 8;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
@@ -54,8 +59,12 @@ pub struct LogoutResponse {
 
 pub async fn register(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<RegisterRequest>,
 ) -> AppResult<Json<AuthResponse>> {
+    enforce_auth_rate_limit(&state, &headers, &addr)?;
+
     let email = body.email.trim().to_lowercase();
     let username = body.username.trim().to_string();
     validate_credentials(&email, &username, &body.password)?;
@@ -77,8 +86,12 @@ pub async fn register(
 
 pub async fn login(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> AppResult<Json<AuthResponse>> {
+    enforce_auth_rate_limit(&state, &headers, &addr)?;
+
     let login = body
         .login
         .or(body.email)
@@ -115,6 +128,17 @@ pub async fn refresh(
     Json(body): Json<RefreshRequest>,
 ) -> AppResult<Json<AuthResponse>> {
     let claims = state.jwt.decode_refresh(&body.refresh_token)?;
+
+    // Light refresh rotation: previously used refresh jti is denylisted
+    if state
+        .cache
+        .get(&jti_deny_key(&claims.jti))
+        .await
+        .is_some()
+    {
+        return Err(AppError::Unauthorized("refresh token revoked".into()));
+    }
+
     // Reject refresh if user logged out after this token was issued
     if is_revoked(&state, &claims.sub, claims.iat).await {
         return Err(AppError::Unauthorized("session revoked".into()));
@@ -122,6 +146,18 @@ pub async fn refresh(
     let user = db::find_user_by_id(&state.pool, &claims.sub)
         .await?
         .ok_or_else(|| AppError::Unauthorized("user not found".into()))?;
+
+    // Revoke the presented refresh jti before issuing a new pair
+    let remaining = (claims.exp - chrono::Utc::now().timestamp()).max(1) as u64;
+    state
+        .cache
+        .set(
+            &jti_deny_key(&claims.jti),
+            "1".into(),
+            Duration::from_secs(remaining),
+        )
+        .await;
+
     issue_tokens(&state, &user).await
 }
 
@@ -160,7 +196,7 @@ async fn issue_tokens(state: &AppState, user: &db::UserRow) -> AppResult<Json<Au
         created_at: user.created_at,
     };
 
-    // Clear revoke marker so new tokens work after re-login
+    // Clear user-level revoke marker so new tokens work after re-login
     state.cache.del(&revoke_key(&user.id)).await;
 
     let profile = serde_json::to_string(&public).unwrap_or_default();
@@ -196,7 +232,46 @@ pub async fn is_revoked(state: &AppState, user_id: &str, token_iat: i64) -> bool
     false
 }
 
-fn validate_credentials(email: &str, username: &str, password: &str) -> AppResult<()> {
+fn enforce_auth_rate_limit(
+    state: &AppState,
+    headers: &HeaderMap,
+    addr: &SocketAddr,
+) -> AppResult<()> {
+    let ip = client_ip(headers, addr);
+    state
+        .auth_rate_limiter
+        .check(&format!("auth:{ip}"))
+        .map_err(|_| {
+            AppError::TooManyRequests(format!(
+                "too many auth attempts; limit {} req/min per IP",
+                state.auth_rate_limiter.max_per_window()
+            ))
+        })?;
+    Ok(())
+}
+
+fn client_ip(headers: &HeaderMap, addr: &SocketAddr) -> String {
+    if let Some(xff) = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(first) = xff.split(',').next() {
+            let trimmed = first.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    if let Some(real) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
+        let trimmed = real.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    addr.ip().to_string()
+}
+
+pub fn validate_credentials(email: &str, username: &str, password: &str) -> AppResult<()> {
     if email.is_empty() || !email.contains('@') {
         return Err(AppError::BadRequest("valid email required".into()));
     }
@@ -213,10 +288,32 @@ fn validate_credentials(email: &str, username: &str, password: &str) -> AppResul
             "username may only contain letters, digits, _ and -".into(),
         ));
     }
-    if password.len() < 8 {
-        return Err(AppError::BadRequest(
-            "password must be at least 8 characters".into(),
-        ));
+    if password.len() < MIN_PASSWORD_LEN {
+        return Err(AppError::BadRequest(format!(
+            "password must be at least {MIN_PASSWORD_LEN} characters"
+        )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn password_min_eight() {
+        let err = validate_credentials("a@b.com", "alice", "short").unwrap_err();
+        match err {
+            AppError::BadRequest(m) => assert!(m.contains("8")),
+            other => panic!("unexpected {other:?}"),
+        }
+        assert!(validate_credentials("a@b.com", "alice", "secret12").is_ok());
+    }
+
+    #[test]
+    fn username_rules() {
+        assert!(validate_credentials("a@b.com", "ab", "secret12").is_err());
+        assert!(validate_credentials("a@b.com", "alice!", "secret12").is_err());
+        assert!(validate_credentials("not-an-email", "alice", "secret12").is_err());
+    }
 }

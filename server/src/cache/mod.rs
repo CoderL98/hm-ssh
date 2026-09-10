@@ -138,3 +138,8 @@ pub fn profile_key(user_id: &str) -> String {
 pub fn revoke_key(user_id: &str) -> String {
     format!("revoke:{user_id}")
 }
+
+pub fn jti_deny_key(jti: &str) -> String {
+    format!("deny:jti:{jti}")
+}
+

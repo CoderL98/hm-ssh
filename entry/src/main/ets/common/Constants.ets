@@ -22,4 +22,6 @@ export class CloudConfig {
   static readonly USE_MOCK: boolean = true;
   /** 真机请改为电脑局域网 IP；模拟器视环境使用 10.0.2.2 或本机 */
   static readonly DEFAULT_BASE_URL: string = 'http://127.0.0.1:8080';
+  /** 与服务端 routes::auth::MIN_PASSWORD_LEN 对齐 */
+  static readonly MIN_PASSWORD_LEN: number = 8;
 }

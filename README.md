@@ -159,7 +159,7 @@ cd server && cp .env.example .env   # 设置 JWT_SECRET
 cargo run                          # http://0.0.0.0:8080
 ```
 
-环境变量摘要：`DATABASE_URL`（`sqlite:` / `postgres://` / `mysql://`）、`JWT_SECRET`、可选 `REDIS_URL`、`BIND`、`CORS_ORIGINS`。
+环境变量摘要：`DATABASE_URL`（`sqlite:` / `postgres://` / `mysql://`）、`JWT_SECRET`、可选 `REDIS_URL`、`BIND`、`CORS_ORIGINS`、`AUTH_RATE_LIMIT_PER_MIN`（默认 20）。
 
 ## Mock vs 真实（NAPI）计划
 
@@ -169,19 +169,31 @@ cargo run                          # http://0.0.0.0:8080
 | FTP | `MockFtpSession` 内存 FS | NAPI + **libcurl** 或自研 FTP：LIST / CWD / RETR / STOR |
 | VNC | `MockVncSession` 占位画布 + 输入 stub | NAPI + **RFB** 解码（LibVNCClient 等）+ Surface 渲染与键鼠注入 |
 | 凭据 | preferences 明文 | HUKS 加密；known_hosts / 证书校验 |
-| 云帐号 Token | preferences + 自动 refresh | HUKS；refresh 轮换已接服务端 |
+| 云帐号 Token | preferences + 自动 refresh + 服务端 refresh jti 轮换 | HUKS 加密存储（下一步） |
 
 工厂类（`SshSessionFactory` / `FtpSessionFactory` / `VncSessionFactory`）可按编译开关切换 Mock / Native，业务 UI 无需改动。
 
-## 已知差距
+## 已知差距 /  backlog
 
-- 非真实网络协议，仅 Mock  
-- 密码明文 preferences（仅演示，且**默认不同步到云端**）；云 Token 亦在 preferences（待 HUKS）  
-- VNC 无真实像素流；FTP 无真实传输与 TLS  
-- 图标为占位；平板 / PC 多窗口与键鼠快捷键尚未打磨  
-- 终端 ANSI 彩色与完整光标渲染尚未展开（当前 bg/fg/cursor 基础令牌）  
-- 云同步出厂 Mock；真机在帐号页切「真实服务器」并填可达地址（需 cleartext/HTTP 或 HTTPS）  
+### 已完成（本阶段）
+
+- 云端 auth 按 IP 速率限制（默认 20 次/分钟，超限 429）
+- 客户端 Mock / Account 注册与服务端统一密码最少 **8** 位
+- ThemeTokens 更广用于 HostListPanel 标题/链接与 Account 主操作（Settings 纯净风不变）
+- 同步冲突 UX：服务端较新且本地有数据时 toast「已从云端合并」；帐号页展示 `lastSyncAt`
+- Refresh token 轻量轮换：刷新时签发新 refresh，并将旧 jti 写入缓存 denylist
+- 服务端单测 / 集成冒烟：`strip_host_secrets`、速率限制、refresh 轮换（`cd server && cargo test`）
+
+### 仍待
+
+- **真实 NAPI**：SSH（libssh2）/ FTP（libcurl 或自研）/ VNC（RFB + Surface）— 当前仅 Mock 接缝
+- **HUKS**：凭据与云 Token 加密落盘；加密后再同步主机机密（可选策略）— 当前 preferences 明文演示，主机密码/私钥默认不上云
+- VNC 无真实像素流；FTP 无真实传输与 TLS
+- 图标为占位；平板 / PC 多窗口与键鼠快捷键尚未打磨
+- 终端 ANSI 彩色与完整光标渲染尚未展开（当前 bg/fg/cursor 基础令牌）
+- 云同步出厂 Mock；真机在帐号页切「真实服务器」并填可达地址（需 cleartext/HTTP 或 HTTPS）
 - 未在本环境执行 DevEco/hvigor 实机编译（请以 DevEco 同步结果为准）
+- 分布式限流（多实例需 Redis 共享计数）；当前为进程内固定窗口
 
 ## 许可
 

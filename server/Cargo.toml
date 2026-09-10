@@ -40,3 +40,9 @@ toml = "0.8"
 [features]
 default = ["redis-cache"]
 redis-cache = ["dep:redis"]
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+serde_json = "1"
+

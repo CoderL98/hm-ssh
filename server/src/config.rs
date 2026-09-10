@@ -15,6 +15,8 @@ pub struct Config {
     pub jwt_refresh_ttl_secs: i64,
     pub redis_url: Option<String>,
     pub cors_origins: Vec<String>,
+    /// Max register+login requests per IP per minute (default 20).
+    pub auth_rate_limit_per_min: u32,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -26,6 +28,7 @@ struct TomlConfig {
     jwt_refresh_ttl_secs: Option<i64>,
     redis_url: Option<String>,
     cors_origins: Option<String>,
+    auth_rate_limit_per_min: Option<u32>,
 }
 
 impl Config {
@@ -78,6 +81,12 @@ impl Config {
             .filter(|s| !s.is_empty())
             .collect();
 
+        let auth_rate_limit_per_min = env::var("AUTH_RATE_LIMIT_PER_MIN")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .or(toml_cfg.auth_rate_limit_per_min)
+            .unwrap_or(20);
+
         Ok(Config {
             bind,
             database_url,
@@ -86,6 +95,7 @@ impl Config {
             jwt_refresh_ttl_secs,
             redis_url,
             cors_origins,
+            auth_rate_limit_per_min,
         })
     }
 

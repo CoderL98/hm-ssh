@@ -1,17 +1,14 @@
-mod auth;
-mod cache;
-mod config;
-mod db;
-mod error;
-mod routes;
-mod state;
-
-use crate::auth::jwt::JwtKeys;
-use crate::config::Config;
-use crate::state::AppState;
+use hm_ssh_server::auth::jwt::JwtKeys;
+use hm_ssh_server::cache;
+use hm_ssh_server::config::Config;
+use hm_ssh_server::db;
+use hm_ssh_server::rate_limit::RateLimiter;
+use hm_ssh_server::routes;
+use hm_ssh_server::state::AppState;
 use anyhow::Context;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
@@ -31,6 +28,7 @@ async fn main() -> anyhow::Result<()> {
         bind = %config.bind,
         db = %config.db_backend_label(),
         redis = config.redis_url.is_some(),
+        auth_rate_limit = config.auth_rate_limit_per_min,
         "starting hm-ssh-server"
     );
 
@@ -46,11 +44,17 @@ async fn main() -> anyhow::Result<()> {
 
     let cache = cache::build_cache(config.redis_url.as_deref()).await;
 
+    let auth_rate_limiter = Arc::new(RateLimiter::new(
+        config.auth_rate_limit_per_min,
+        Duration::from_secs(60),
+    ));
+
     let state = AppState {
         pool,
         jwt,
         cache,
         config: Arc::new(config.clone()),
+        auth_rate_limiter,
     };
 
     let cors = build_cors(&config.cors_origins);
@@ -64,9 +68,12 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("parse BIND {}", config.bind))?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!("listening on http://{addr}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
     Ok(())
 }
 

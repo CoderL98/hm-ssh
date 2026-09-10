@@ -7,6 +7,7 @@ import { ThemeTokens } from '../theme/ThemeTokens';
 
 /**
  * 左侧 / 窄屏主机列表：鸿蒙设置纯净风大标题 + 白色分组卡片列表。
+ * 标题/链接/强调色走 ThemeTokens（与 Settings 一致，不破坏纯净风）。
  */
 @Component
 export struct HostListPanel {
@@ -23,13 +24,38 @@ export struct HostListPanel {
     return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
   }
 
+  private textPrimary(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().textPrimary;
+  }
+
+  private textSecondary(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().textSecondary;
+  }
+
+  private surfacePage(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().pageBackground;
+  }
+
+  private surfaceCard(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().cardBackground;
+  }
+
+  private divider(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().divider;
+  }
+
   build() {
     Column() {
       Row() {
         Text($r('app.string.host_list_title'))
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
+          .fontColor(this.textPrimary())
           .layoutWeight(1)
         Text($r('app.string.settings_entry'))
           .fontSize(15)
@@ -58,7 +84,7 @@ export struct HostListPanel {
         Column() {
           Text($r('app.string.host_list_empty'))
             .fontSize($r('app.float.body_font_size'))
-            .fontColor($r('app.color.text_secondary'))
+            .fontColor(this.textSecondary())
             .textAlign(TextAlign.Center)
           Text($r('app.string.host_add'))
             .fontSize(16)
@@ -85,7 +111,7 @@ export struct HostListPanel {
                   })
                   if (index < this.hosts.length - 1) {
                     Divider()
-                      .color($r('app.color.divider'))
+                      .color(this.divider())
                       .strokeWidth(0.5)
                       .margin({ left: 16 })
                   }
@@ -105,13 +131,13 @@ export struct HostListPanel {
           right: $r('app.float.page_padding'),
           bottom: 12
         })
-        .backgroundColor($r('app.color.card_background'))
+        .backgroundColor(this.surfaceCard())
         .borderRadius($r('app.float.card_radius'))
         .clip(true)
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.page_background'))
+    .backgroundColor(this.surfacePage())
   }
 }

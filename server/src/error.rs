@@ -15,6 +15,8 @@ pub enum AppError {
     Conflict(String),
     #[error("{0}")]
     NotFound(String),
+    #[error("{0}")]
+    TooManyRequests(String),
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
     #[error(transparent)]
@@ -33,6 +35,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m.clone()),
             AppError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
             AppError::NotFound(m) => (StatusCode::NOT_FOUND, m.clone()),
+            AppError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m.clone()),
             AppError::Internal(e) => {
                 tracing::error!("internal: {e:#}");
                 (

@@ -304,8 +304,9 @@ export class HttpAuthService implements IAuthService {
  */
 export class MockAuthService implements IAuthService {
   async register(email: string, username: string, password: string): Promise<AuthTokens> {
-    if (!email || !username || password.length < 4) {
-      throw new Error('请填写邮箱、用户名与密码');
+    // 与服务端 MIN_PASSWORD_LEN 对齐
+    if (!email || !username || password.length < CloudConfig.MIN_PASSWORD_LEN) {
+      throw new Error(`请填写邮箱、用户名，且密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`);
     }
     return this.fakeSession(email, username);
   }
@@ -469,6 +470,11 @@ export async function cloudRequestRaw(
       }
       if (code === 401) {
         msg = msg.indexOf('401') >= 0 ? msg : `401 ${msg}`;
+      }
+      if (code === 429) {
+        msg = msg.indexOf('too many') >= 0 || msg.indexOf('频繁') >= 0
+          ? msg
+          : `请求过于频繁（429），请稍后再试`;
       }
       throw new Error(msg);
     }

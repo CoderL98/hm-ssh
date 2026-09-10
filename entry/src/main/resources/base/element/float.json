@@ -1,0 +1,24 @@
+{
+  "float": [
+    {
+      "name": "page_title_font_size",
+      "value": "20fp"
+    },
+    {
+      "name": "body_font_size",
+      "value": "16fp"
+    },
+    {
+      "name": "caption_font_size",
+      "value": "12fp"
+    },
+    {
+      "name": "card_radius",
+      "value": "12vp"
+    },
+    {
+      "name": "page_padding",
+      "value": "16vp"
+    }
+  ]
+}

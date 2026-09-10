@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "鸿蒙SSH 主模块",
+  "main": "",
+  "author": "CoderL98",
+  "license": "MIT",
+  "dependencies": {}
+}

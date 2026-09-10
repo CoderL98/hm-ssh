@@ -1,0 +1,87 @@
+import { router } from '@kit.ArkUI';
+import { HostConfig } from '../models/HostConfig';
+import { HostStore } from '../services/HostStore';
+import { MockSshSession, SshSessionFactory } from '../services/SshSession';
+import { TerminalView } from '../components/TerminalView';
+
+@Entry
+@Component
+struct TerminalPage {
+  @State output: string = '';
+  @State inputText: string = '';
+  @State connected: boolean = false;
+  @State title: string = '';
+  private session: MockSshSession = SshSessionFactory.create() as MockSshSession;
+  private host: HostConfig | null = null;
+
+  aboutToAppear(): void {
+    const params = router.getParams() as Record<string, string>;
+    let hostId = '';
+    if (params && params['hostId']) {
+      hostId = String(params['hostId']);
+    }
+    const found = HostStore.getInstance().getById(hostId);
+    this.host = found !== undefined ? found : null;
+    if (this.host) {
+      this.title = this.host.displayName();
+      this.session.onOutput((_chunk: string) => {
+        this.output = this.session.getOutput();
+        this.connected = this.session.isConnected();
+      });
+      this.session.connect(this.host).then(() => {
+        this.output = this.session.getOutput();
+        this.connected = this.session.isConnected();
+      });
+    } else {
+      this.output = '未找到主机配置。\n';
+    }
+  }
+
+  aboutToDisappear(): void {
+    if (this.session.isConnected()) {
+      this.session.disconnect();
+    }
+  }
+
+  build() {
+    Column() {
+      Row() {
+        Button('< 返回')
+          .type(ButtonType.Normal)
+          .backgroundColor(Color.Transparent)
+          .fontColor($r('app.color.primary'))
+          .onClick(() => {
+            this.session.disconnect().then(() => {
+              router.back();
+            });
+          })
+        Blank()
+      }
+      .width('100%')
+      .padding({ left: 4, right: 8, top: 4 })
+
+      TerminalView({
+        output: this.output,
+        connected: this.connected,
+        title: this.title,
+        inputText: $inputText,
+        onSend: (cmd: string) => {
+          this.session.send(cmd).then(() => {
+            this.output = this.session.getOutput();
+            this.connected = this.session.isConnected();
+          });
+        },
+        onDisconnect: () => {
+          this.session.disconnect().then(() => {
+            this.output = this.session.getOutput();
+            this.connected = false;
+          });
+        }
+      })
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.page_background'))
+  }
+}

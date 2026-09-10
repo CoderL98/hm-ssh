@@ -1,0 +1,22 @@
+{
+  "files": [
+    "**/*.ets"
+  ],
+  "ignore": [
+    "**/src/ohosTest/**/*",
+    "**/src/test/**/*",
+    "**/BuildProfile.ets",
+    "**/build/**/*",
+    "**/node_modules/**/*",
+    "**/oh_modules/**/*"
+  ],
+  "ruleSet": [
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@performance/recommended",
+    "plugin:@typescript-eslint/all",
+    "plugin:@security/all"
+  ],
+  "rules": {
+    "@security/no-unsafe-asap": "warn"
+  }
+}

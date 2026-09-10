@@ -1,0 +1,116 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "鸿蒙SSH 主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "鸿蒙SSH 入口"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "鸿蒙SSH"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "连接远程 SSH 主机需要网络权限"
+    },
+    {
+      "name": "host_list_title",
+      "value": "主机列表"
+    },
+    {
+      "name": "host_list_empty",
+      "value": "暂无主机，点击右上角添加"
+    },
+    {
+      "name": "host_add",
+      "value": "添加主机"
+    },
+    {
+      "name": "host_edit",
+      "value": "编辑主机"
+    },
+    {
+      "name": "host_name",
+      "value": "显示名称"
+    },
+    {
+      "name": "host_address",
+      "value": "主机地址"
+    },
+    {
+      "name": "host_port",
+      "value": "端口"
+    },
+    {
+      "name": "host_username",
+      "value": "用户名"
+    },
+    {
+      "name": "host_password",
+      "value": "密码"
+    },
+    {
+      "name": "host_private_key",
+      "value": "私钥（可选）"
+    },
+    {
+      "name": "host_private_key_placeholder",
+      "value": "私钥路径或内容（后续接入）"
+    },
+    {
+      "name": "btn_save",
+      "value": "保存"
+    },
+    {
+      "name": "btn_cancel",
+      "value": "取消"
+    },
+    {
+      "name": "btn_connect",
+      "value": "连接"
+    },
+    {
+      "name": "btn_disconnect",
+      "value": "断开"
+    },
+    {
+      "name": "btn_delete",
+      "value": "删除"
+    },
+    {
+      "name": "btn_edit",
+      "value": "编辑"
+    },
+    {
+      "name": "terminal_title",
+      "value": "终端"
+    },
+    {
+      "name": "terminal_input_hint",
+      "value": "输入命令后回车发送"
+    },
+    {
+      "name": "terminal_select_host",
+      "value": "请选择左侧主机并连接"
+    },
+    {
+      "name": "toast_saved",
+      "value": "已保存"
+    },
+    {
+      "name": "toast_deleted",
+      "value": "已删除"
+    },
+    {
+      "name": "toast_invalid",
+      "value": "请填写主机地址与用户名"
+    },
+    {
+      "name": "confirm_delete",
+      "value": "确认删除该主机？"
+    }
+  ]
+}

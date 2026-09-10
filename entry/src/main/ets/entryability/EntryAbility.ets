@@ -17,6 +17,8 @@ export default class EntryAbility extends UIAbility {
       AppStorage.setOrCreate('themeRev', 0);
       AppStorage.setOrCreate('authRev', 0);
       AppStorage.setOrCreate('appSettingsRev', 0);
+      AppStorage.setOrCreate('hostRev', 0);
+      AppStorage.setOrCreate('syncToastMsg', '');
     } catch (_e) {
       // ignore
     }
@@ -35,19 +37,8 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
-    Promise.all([
-      AppSettings.getInstance().init(this.context),
-      HuksCrypto.getInstance().init().catch((e: Error) => {
-        hilog.error(DOMAIN, TAG, 'HUKS init failed %{public}s', e.message ?? `${e}`);
-      }),
-      ThemeStore.getInstance().init(this.context),
-      AuthStore.getInstance().init(this.context),
-      CloudSyncServiceFactory.init(this.context)
-    ]).then(async () => {
-      // HostStore after HUKS/AppSettings so migration can encrypt
-      await HostStore.getInstance().init(this.context);
-      hilog.info(DOMAIN, TAG, 'Stores + HUKS + AppSettings ready');
-    }).catch((err: Error) => {
+    // 初始化顺序：AppSettings/HUKS → Theme + Auth + CloudSync → HostStore → 登录态后台 syncAll
+    this.bootstrapStores().catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Store init failed %{public}s', JSON.stringify(err));
     });
 
@@ -58,6 +49,49 @@ export default class EntryAbility extends UIAbility {
       }
       hilog.info(DOMAIN, TAG, 'loadContent success');
     });
+  }
+
+  private async bootstrapStores(): Promise<void> {
+    await Promise.all([
+      AppSettings.getInstance().init(this.context),
+      HuksCrypto.getInstance().init().catch((e: Error) => {
+        hilog.error(DOMAIN, TAG, 'HUKS init failed %{public}s', e.message ?? `${e}`);
+      })
+    ]);
+    await Promise.all([
+      ThemeStore.getInstance().init(this.context),
+      AuthStore.getInstance().init(this.context),
+      CloudSyncServiceFactory.init(this.context)
+    ]);
+    await HostStore.getInstance().init(this.context);
+    hilog.info(DOMAIN, TAG, 'Stores + HUKS + AppSettings ready');
+
+    const auth = AuthStore.getInstance();
+    if (auth.isLoggedIn()) {
+      // 有会话则后台全量同步；结果写入 syncToastMsg 供 Index toast
+      void this.autoSyncOnLaunch();
+    }
+  }
+
+  private async autoSyncOnLaunch(): Promise<void> {
+    try {
+      const msg = await CloudSyncServiceFactory.create().syncAll();
+      HostStore.getInstance().notifyChanged();
+      hilog.info(DOMAIN, TAG, 'Launch sync OK: %{public}s', msg);
+      try {
+        AppStorage.setOrCreate('syncToastMsg', msg);
+      } catch (_e) {
+        // ignore
+      }
+    } catch (e) {
+      const m = e instanceof Error ? e.message : `${e}`;
+      hilog.error(DOMAIN, TAG, 'Launch sync failed %{public}s', m);
+      try {
+        AppStorage.setOrCreate('syncToastMsg', `启动同步失败：${m}`);
+      } catch (_e) {
+        // ignore
+      }
+    }
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {

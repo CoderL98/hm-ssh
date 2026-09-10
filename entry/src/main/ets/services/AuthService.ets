@@ -325,11 +325,19 @@ export class HttpAuthService implements IAuthService {
  */
 export class MockAuthService implements IAuthService {
   async register(email: string, username: string, password: string): Promise<AuthTokens> {
-    // 与服务端 MIN_PASSWORD_LEN 对齐
-    if (!email || !username || password.length < CloudConfig.MIN_PASSWORD_LEN) {
-      throw new Error(`请填写邮箱、用户名，且密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`);
+    // 与服务端 MIN_PASSWORD_LEN / 客户端校验对齐
+    const e = (email ?? '').trim();
+    const u = (username ?? '').trim();
+    if (!e || e.indexOf('@') <= 0 || e.indexOf('@') >= e.length - 1) {
+      throw new Error('请输入有效邮箱');
     }
-    return this.fakeSession(email, username);
+    if (!u) {
+      throw new Error('请填写用户名');
+    }
+    if (password.length < CloudConfig.MIN_PASSWORD_LEN) {
+      throw new Error(`密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`);
+    }
+    return this.fakeSession(e, u);
   }
 
   async login(login: string, password: string): Promise<AuthTokens> {
@@ -437,6 +445,32 @@ export async function cloudRequest(
   }
 }
 
+/** 将服务端错误正文裁成可读片段 */
+function snippetServerBody(raw: string, maxLen: number = 180): string {
+  const t = (raw ?? '').trim().replace(/\s+/g, ' ');
+  if (!t) {
+    return '';
+  }
+  return t.length <= maxLen ? t : `${t.substring(0, maxLen)}…`;
+}
+
+function isNetworkFailureMessage(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return m.indexOf('connect') >= 0 ||
+    m.indexOf('network') >= 0 ||
+    m.indexOf('timeout') >= 0 ||
+    m.indexOf('timed out') >= 0 ||
+    m.indexOf('failed to connect') >= 0 ||
+    m.indexOf('could not connect') >= 0 ||
+    m.indexOf('unreachable') >= 0 ||
+    m.indexOf('econnrefused') >= 0 ||
+    m.indexOf('socket') >= 0 ||
+    m.indexOf('ssl') >= 0 ||
+    m.indexOf('cleartext') >= 0 ||
+    m.indexOf('dns') >= 0 ||
+    m.indexOf('无法连接') >= 0;
+}
+
 /** 底层 HTTP（不做 refresh，供 refresh/login 自身使用，避免递归） */
 export async function cloudRequestRaw(
   method: string,
@@ -474,19 +508,37 @@ export async function cloudRequestRaw(
     if (body !== null) {
       options.extraData = JSON.stringify(body);
     }
-    const resp = await req.request(url, options);
+    let resp: http.HttpResponse;
+    try {
+      resp = await req.request(url, options);
+    } catch (netErr) {
+      const raw = netErr instanceof Error ? netErr.message : `${netErr}`;
+      if (isNetworkFailureMessage(raw) || !raw || raw.length === 0) {
+        throw new Error('无法连接服务器，请检查地址与 cleartext');
+      }
+      throw new Error(`无法连接服务器，请检查地址与 cleartext（${snippetServerBody(raw, 80)}）`);
+    }
     const code = resp.responseCode;
     const result = typeof resp.result === 'string' ? resp.result : JSON.stringify(resp.result);
     if (code < 200 || code >= 300) {
       let msg = `HTTP ${code}`;
+      let bodySnippet = '';
       try {
-        const errObj = JSON.parse(result) as Record<string, string>;
+        const errObj = JSON.parse(result) as Record<string, Object>;
         if (errObj['error']) {
-          msg = errObj['error'];
+          msg = `${errObj['error']}`;
+        } else if (errObj['message']) {
+          msg = `${errObj['message']}`;
+        } else {
+          bodySnippet = snippetServerBody(result);
+          if (bodySnippet) {
+            msg = `HTTP ${code}：${bodySnippet}`;
+          }
         }
       } catch (_e) {
-        if (result && result.length > 0 && result.length < 200) {
-          msg = result;
+        bodySnippet = snippetServerBody(result);
+        if (bodySnippet) {
+          msg = `HTTP ${code}：${bodySnippet}`;
         }
       }
       if (code === 401) {

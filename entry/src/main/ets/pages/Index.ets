@@ -12,6 +12,7 @@ import { VncSessionView } from '../components/VncSessionView';
 import { BreakpointHelper, WindowSizeState } from '../layout/Breakpoint';
 import { RouteNames } from '../common/Constants';
 import { maybePushAfterLocalChange } from '../services/CloudSyncService';
+import { AuthStore } from '../services/AuthService';
 
 /**
  * 主页：窄屏栈式导航；宽屏主从分栏。
@@ -27,6 +28,11 @@ struct Index {
   @State widthVp: number = 360;
   @State heightVp: number = 780;
   @State listPaneWidth: string = '34%';
+  @StorageLink('hostRev') @Watch('onHostRev') hostRev: number = 0;
+  @StorageLink('authRev') @Watch('onAuthRev') authRev: number = 0;
+  @StorageLink('syncToastMsg') @Watch('onSyncToastMsg') syncToastMsg: string = '';
+  @State authLoggedIn: boolean = false;
+  @State authLabel: string = '';
 
   // SSH
   @State terminalOutput: string = '';
@@ -56,7 +62,9 @@ struct Index {
   private sizeSnapshot: WindowSizeState = new WindowSizeState();
 
   aboutToAppear(): void {
+    this.refreshAuth();
     this.reloadHosts();
+    this.consumeSyncToast();
     this.sshSession.onOutput((_chunk: string) => {
       this.terminalOutput = this.sshSession.getOutput();
       this.terminalConnected = this.sshSession.isConnected();
@@ -76,11 +84,55 @@ struct Index {
   }
 
   onPageShow(): void {
+    this.refreshAuth();
     this.reloadHosts();
+    this.consumeSyncToast();
   }
 
   private reloadHosts(): void {
+    void this.hostRev;
     this.hosts = HostStore.getInstance().getAll();
+  }
+
+  onHostRev(): void {
+    this.reloadHosts();
+  }
+
+  onAuthRev(): void {
+    this.refreshAuth();
+  }
+
+  private refreshAuth(): void {
+    void this.authRev;
+    const auth = AuthStore.getInstance();
+    this.authLoggedIn = auth.isLoggedIn();
+    const u = auth.getUser();
+    this.authLabel = u ? u.username : '';
+  }
+
+  onSyncToastMsg(): void {
+    this.consumeSyncToast();
+  }
+
+  private consumeSyncToast(): void {
+    const msg = this.syncToastMsg;
+    if (!msg || msg.length === 0) {
+      return;
+    }
+    try {
+      promptAction.showToast({ message: msg, duration: 2800 });
+    } catch (_e) {
+      // ignore
+    }
+    try {
+      AppStorage.setOrCreate('syncToastMsg', '');
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  private goAccount(): void {
+    router.pushUrl({ url: RouteNames.ACCOUNT });
   }
 
   private initWindowListener(): void {
@@ -352,6 +404,8 @@ ${SshSessionFactory.lastNativeHint()}
     HostListPanel({
       hosts: this.hosts,
       selectedId: this.selectedId,
+      authLabel: this.authLabel,
+      loggedIn: this.authLoggedIn,
       onAdd: () => {
         this.goAdd();
       },
@@ -363,6 +417,9 @@ ${SshSessionFactory.lastNativeHint()}
       },
       onDelete: (h: HostConfig) => {
         this.confirmDelete(h);
+      },
+      onAccount: () => {
+        this.goAccount();
       }
     })
   }
@@ -373,6 +430,8 @@ ${SshSessionFactory.lastNativeHint()}
       HostListPanel({
         hosts: this.hosts,
         selectedId: this.selectedId,
+        authLabel: this.authLabel,
+        loggedIn: this.authLoggedIn,
         onAdd: () => {
           this.goAdd();
         },
@@ -384,6 +443,9 @@ ${SshSessionFactory.lastNativeHint()}
         },
         onDelete: (h: HostConfig) => {
           this.confirmDelete(h);
+        },
+        onAccount: () => {
+          this.goAccount();
         }
       })
         .width(this.listPaneWidth)

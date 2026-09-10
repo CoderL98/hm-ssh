@@ -6,11 +6,13 @@ import { AppSettings } from './AppSettings';
 
 const STORE_NAME = 'hm_ssh_hosts';
 const KEY_HOSTS = 'hosts_json';
+const HOST_REV_KEY = 'hostRev';
 
 /**
  * 基于 preferences 的主机配置持久化。
  * 密码/私钥：内存明文；落盘 HUKS 密文（passwordLocalEnc）。
  * 可选云端保险柜字段 passwordEnc（PBKDF）由 upsert/sync 填充。
+ * 变更后写入 AppStorage.hostRev，驱动 Index 刷新列表。
  */
 export class HostStore {
   private static instance: HostStore | undefined = undefined;
@@ -19,6 +21,7 @@ export class HostStore {
   private ready: boolean = false;
   private huksOk: boolean = false;
   private huksError: string = '';
+  private revision: number = 0;
 
   static getInstance(): HostStore {
     if (!HostStore.instance) {
@@ -29,6 +32,11 @@ export class HostStore {
 
   getHuksError(): string {
     return this.huksError;
+  }
+
+  /** 强制 bump hostRev（如云同步合并后刷新 UI） */
+  notifyChanged(): void {
+    this.publish();
   }
 
   async init(context: common.Context): Promise<void> {
@@ -48,6 +56,7 @@ export class HostStore {
     this.hosts = HostStore.parseList(raw);
     await this.migrateAndUnlock();
     this.ready = true;
+    this.publish();
   }
 
   getAll(): HostConfig[] {
@@ -178,6 +187,7 @@ export class HostStore {
 
   private async persist(): Promise<void> {
     if (!this.pref) {
+      this.publish();
       return;
     }
     const list: HostJson[] = this.hosts.map((h: HostConfig) => {
@@ -191,6 +201,16 @@ export class HostStore {
     });
     await this.pref.put(KEY_HOSTS, JSON.stringify(list));
     await this.pref.flush();
+    this.publish();
+  }
+
+  private publish(): void {
+    this.revision += 1;
+    try {
+      AppStorage.setOrCreate(HOST_REV_KEY, this.revision);
+    } catch (_e) {
+      // AppStorage 可能尚未就绪
+    }
   }
 
   private static parseList(raw: string): HostConfig[] {

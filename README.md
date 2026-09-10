@@ -145,11 +145,13 @@ hm-ssh/
 
 ### 帐号与云同步
 
-入口：**设置 → 帐号**（`AccountPage`）。出厂默认 Mock（`CloudConfig.USE_MOCK`）；**帐号页可运行时切换** Mock / 真实服务器并填写基址（持久化到 `AuthStore`）。
+入口：主机列表右上角 **「登录」/ 用户名**，或 **设置 → 帐号**（`AccountPage`）。
+
+出厂默认 **真实 HTTP**（`CloudConfig.USE_MOCK = false`）；帐号页可切换 Mock 离线演示。默认基址 `http://10.0.2.2:8080`（模拟器访问宿主机）；本机可用 `http://127.0.0.1:8080`，真机改为电脑局域网 IP；均可在帐号页修改并持久化。
 
 | 组件 | 说明 |
 | --- | --- |
-| `AuthService` | JWT + refresh；**HUKS 加密**后写入 preferences；HTTP 自动 refresh |
+| `AuthService` | JWT + refresh；**HUKS 加密**后写入 preferences；HTTP 自动 refresh；401 重试 |
 | `HuksCrypto` | `@kit.UniversalKeystoreKit` AES；可选口令 PBKDF「云端保险柜」 |
 | `CloudSyncService` | hosts/settings 同步；默认剥离明文；保险柜开启时带 `passwordEnc`/`privateKeyEnc` |
 | `server/` | Rust 云端；`strip_host_secrets` **保留** `passwordEnc`/`privateKeyEnc`，清空明文 |
@@ -158,12 +160,24 @@ hm-ssh/
 
 **机密策略**：明文 `password`/`privateKey` 永不上传。本机 HUKS 密文存 `passwordLocalEnc`。可选「同步加密密钥到云端」（帐号页，默认 OFF）：用保险柜口令 PBKDF 派生密钥加密为 `passwordEnc`/`privateKeyEnc` 再同步。
 
-启动云端见 [`server/README.md`](./server/README.md)：
+#### 客户端登录与同步
+
+1. **启动 Rust 云端**（见 [`server/README.md`](./server/README.md)）：
 
 ```bash
 cd server && cp .env.example .env   # 设置 JWT_SECRET；可选 ADMIN_EMAIL / ADMIN_PASSWORD
 cargo run                          # http://0.0.0.0:8080
 ```
+
+2. **客户端基址**：帐号页确认「真实服务器」，填写：
+   - 模拟器：`http://10.0.2.2:8080`
+   - 本机 / 部分预览：`http://127.0.0.1:8080`
+   - 真机：`http://<电脑局域网IP>:8080`  
+   工程已允许 cleartext（`network_config.json`）；连不上时检查地址与防火墙。
+3. **注册 / 登录**：邮箱 + 用户名 + 密码（≥8）；登录可用邮箱或用户名。成功后自动 `syncAll`。
+4. **同步内容**：主机列表与主题/终端等设置；列表右上角可再进帐号页点「立即同步」或「退出登录」。
+5. **冷启动**：若本地已有会话，`EntryAbility` 会后台 `syncAll`，结果 toast 提示。
+6. **Mock**：帐号页切换「Mock（离线演示）」可无服务器联调 UI（切换会退出当前登录）。
 
 管理控制台见 [`admin/README.md`](./admin/README.md)：
 
@@ -201,7 +215,7 @@ pnpm install && pnpm dev           # http://localhost:5173
 - VNC 更多编码（CopyRect/Tight/ZRLE）；FTP TLS；PixelMap 完整绘制链路打磨
 - known_hosts / 主机密钥校验
 - 图标；平板 / PC 多窗口与快捷键；终端 ANSI 彩色
-- 云同步出厂仍 Mock；真机切真实服务器
+- 真机请将帐号页基址改为局域网 IP（出厂默认 10.0.2.2 面向模拟器）
 - 本环境未跑 DevEco/hvigor；分布式限流需 Redis
 
 ## 许可

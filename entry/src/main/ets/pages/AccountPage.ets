@@ -20,11 +20,12 @@ struct AccountPage {
   @State username: string = '';
   @State password: string = '';
   @State baseUrl: string = CloudConfig.DEFAULT_BASE_URL;
-  @State useMock: boolean = true;
+  @State useMock: boolean = false;
   @State busy: boolean = false;
   @State statusText: string = '';
   @State loggedIn: boolean = false;
   @State displayName: string = '';
+  @State displayEmail: string = '';
   @State lastSyncLabel: string = '';
   @State cloudVault: boolean = false;
   @State vaultPassphrase: string = '';
@@ -47,7 +48,8 @@ struct AccountPage {
     this.loggedIn = store.isLoggedIn();
     this.useMock = store.isUseMock();
     const u = store.getUser();
-    this.displayName = u ? `${u.username}（${u.email}）` : '';
+    this.displayName = u ? u.username : '';
+    this.displayEmail = u ? u.email : '';
     void this.refreshLastSyncLabel();
   }
 
@@ -68,15 +70,50 @@ struct AccountPage {
     }
   }
 
-  /** 注册密码与服务端 / CloudConfig.MIN_PASSWORD_LEN 对齐 */
-  private validateRegisterInput(): string | null {
-    if (this.mode !== 'register') {
+  private isValidEmail(email: string): boolean {
+    const e = email.trim();
+    const at = e.indexOf('@');
+    if (at <= 0 || at >= e.length - 1) {
+      return false;
+    }
+    const domain = e.substring(at + 1);
+    return domain.indexOf('.') > 0 && e.indexOf(' ') < 0;
+  }
+
+  /** 登录 / 注册表单校验；返回错误文案或 null */
+  private validateAuthInput(): string | null {
+    if (this.mode === 'register') {
+      if (!this.isValidEmail(this.email)) {
+        return '请输入有效邮箱';
+      }
+      if (this.username.trim().length === 0) {
+        return '请填写用户名';
+      }
+      if (this.password.length < CloudConfig.MIN_PASSWORD_LEN) {
+        return `密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`;
+      }
       return null;
     }
-    if (this.password.length < CloudConfig.MIN_PASSWORD_LEN) {
-      return `密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`;
+    const loginId = (this.email || this.username).trim();
+    if (loginId.length === 0 || this.password.length < 1) {
+      return '请填写邮箱或用户名与密码';
     }
     return null;
+  }
+
+  private formatAuthError(e: Object | string | Error): string {
+    const m = e instanceof Error ? e.message : `${e}`;
+    if (!m || m.length === 0) {
+      return '操作失败';
+    }
+    if (m.indexOf('无法连接服务器') >= 0) {
+      return m;
+    }
+    return m;
+  }
+
+  private bumpHostsUi(): void {
+    HostStore.getInstance().notifyChanged();
   }
 
   private surfacePage(): string {
@@ -141,7 +178,7 @@ struct AccountPage {
     if (this.busy) {
       return;
     }
-    const pwErr = this.validateRegisterInput();
+    const pwErr = this.validateAuthInput();
     if (pwErr) {
       this.toast(pwErr);
       this.statusText = pwErr;
@@ -164,6 +201,7 @@ struct AccountPage {
       this.toast(this.mode === 'register' ? '注册并登录成功' : '登录成功');
       try {
         const msg = await CloudSyncServiceFactory.create().syncAll();
+        this.bumpHostsUi();
         this.statusText = msg;
         if (msg.indexOf('已从云端合并') >= 0) {
           this.toast('已从云端合并');
@@ -172,11 +210,11 @@ struct AccountPage {
         }
         await this.refreshLastSyncLabel();
       } catch (syncErr) {
-        const m = syncErr instanceof Error ? syncErr.message : '同步失败';
+        const m = this.formatAuthError(syncErr as Error);
         this.statusText = `已登录，同步跳过：${m}`;
       }
     } catch (e) {
-      const m = e instanceof Error ? e.message : '操作失败';
+      const m = this.formatAuthError(e as Error);
       this.toast(m);
       this.statusText = m;
     } finally {
@@ -206,7 +244,11 @@ struct AccountPage {
     this.busy = true;
     this.statusText = '同步中…';
     try {
+      if (!this.useMock) {
+        await AuthStore.getInstance().setBaseUrl(this.baseUrl);
+      }
       const msg = await CloudSyncServiceFactory.create().syncAll();
+      this.bumpHostsUi();
       this.statusText = msg;
       if (msg.indexOf('已从云端合并') >= 0) {
         this.toast('已从云端合并');
@@ -215,7 +257,7 @@ struct AccountPage {
       }
       await this.refreshLastSyncLabel();
     } catch (e) {
-      const m = e instanceof Error ? e.message : '同步失败';
+      const m = this.formatAuthError(e as Error);
       this.toast(m);
       this.statusText = m;
     } finally {
@@ -323,7 +365,7 @@ struct AccountPage {
                 .fontColor(this.textSecondary())
                 .width('100%')
                 .padding({ left: 16, right: 16, top: 12, bottom: 8 })
-              TextInput({ text: this.baseUrl, placeholder: 'http://192.168.x.x:8080' })
+              TextInput({ text: this.baseUrl, placeholder: $r('app.string.account_server_placeholder') })
                 .width('100%')
                 .height(44)
                 .fontSize(15)
@@ -346,9 +388,17 @@ struct AccountPage {
             Column() {
               Text(this.displayName)
                 .fontSize(16)
+                .fontWeight(FontWeight.Medium)
                 .fontColor(this.textPrimary())
                 .width('100%')
-                .padding({ left: 16, right: 16, top: 14, bottom: 8 })
+                .padding({ left: 16, right: 16, top: 14, bottom: 2 })
+              if (this.displayEmail.length > 0) {
+                Text(this.displayEmail)
+                  .fontSize(13)
+                  .fontColor(this.textSecondary())
+                  .width('100%')
+                  .padding({ left: 16, right: 16, bottom: 8 })
+              }
               Text(this.useMock ? $r('app.string.account_mock_hint') : $r('app.string.account_sync_hint'))
                 .fontSize(13)
                 .fontColor(this.textSecondary())
@@ -360,7 +410,7 @@ struct AccountPage {
                 .width('100%')
                 .padding({ left: 16, right: 16, bottom: 8 })
               Text(this.lastSyncLabel.length > 0 ?
-                `上次同步：${this.lastSyncLabel}` : '尚未同步')
+                `上次同步：${this.lastSyncLabel}` : $r('app.string.account_never_synced'))
                 .fontSize(12)
                 .fontColor(this.textSecondary())
                 .width('100%')

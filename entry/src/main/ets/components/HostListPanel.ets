@@ -8,16 +8,21 @@ import { ThemeTokens } from '../theme/ThemeTokens';
 /**
  * 左侧 / 窄屏主机列表：鸿蒙设置纯净风大标题 + 白色分组卡片列表。
  * 标题/链接/强调色走 ThemeTokens（与 Settings 一致，不破坏纯净风）。
+ * 右上角：「登录」/ 用户名 → 帐号页；设置；添加。
  */
 @Component
 export struct HostListPanel {
   @Prop hosts: HostConfig[] = [];
   @Prop selectedId: string = '';
+  /** 未登录显示「登录」；已登录显示用户名 */
+  @Prop authLabel: string = '';
+  @Prop loggedIn: boolean = false;
   @StorageLink('themeRev') themeRev: number = 0;
   onAdd: () => void = () => {};
   onConnect: (host: HostConfig) => void = () => {};
   onEdit: (host: HostConfig) => void = () => {};
   onDelete: (host: HostConfig) => void = () => {};
+  onAccount: () => void = () => {};
 
   private accent(): string {
     void this.themeRev;
@@ -57,6 +62,17 @@ export struct HostListPanel {
           .fontWeight(FontWeight.Bold)
           .fontColor(this.textPrimary())
           .layoutWeight(1)
+
+        Text(this.loggedIn ?
+          (this.authLabel.length > 0 ? this.authLabel : $r('app.string.account_signed_in')) :
+          $r('app.string.account_login_tab'))
+          .fontSize(15)
+          .fontColor(this.accent())
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .constraintSize({ maxWidth: 96 })
+          .padding({ left: 6, right: 6, top: 4, bottom: 4 })
+          .onClick(() => this.onAccount())
         Text($r('app.string.settings_entry'))
           .fontSize(15)
           .fontColor(this.accent())
@@ -91,6 +107,13 @@ export struct HostListPanel {
             .fontColor(this.accent())
             .margin({ top: 20 })
             .onClick(() => this.onAdd())
+          if (!this.loggedIn) {
+            Text($r('app.string.host_list_login_cta'))
+              .fontSize(15)
+              .fontColor(this.accent())
+              .margin({ top: 12 })
+              .onClick(() => this.onAccount())
+          }
         }
         .width('100%')
         .layoutWeight(1)

@@ -403,6 +403,46 @@
     {
       "name": "huks_failed_toast",
       "value": "HUKS 初始化失败，机密可能明文存储"
+    },
+    {
+      "name": "host_list_login_hint",
+      "value": "登录以同步主机与设置"
+    },
+    {
+      "name": "host_list_login_cta",
+      "value": "登录 / 注册帐号"
+    },
+    {
+      "name": "account_email_invalid",
+      "value": "请输入有效邮箱"
+    },
+    {
+      "name": "account_username_required",
+      "value": "请填写用户名"
+    },
+    {
+      "name": "account_login_required",
+      "value": "请填写邮箱或用户名与密码"
+    },
+    {
+      "name": "account_network_error",
+      "value": "无法连接服务器，请检查地址与 cleartext"
+    },
+    {
+      "name": "account_server_placeholder",
+      "value": "http://10.0.2.2:8080 或 http://192.168.x.x:8080"
+    },
+    {
+      "name": "account_login_success",
+      "value": "登录成功"
+    },
+    {
+      "name": "account_register_success",
+      "value": "注册并登录成功"
+    },
+    {
+      "name": "account_logout_done",
+      "value": "已退出登录"
     }
   ]
 }

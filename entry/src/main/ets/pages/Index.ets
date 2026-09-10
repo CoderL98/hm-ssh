@@ -389,6 +389,21 @@ ${SshSessionFactory.lastNativeHint()}
       this.vncConnected;
   }
 
+  private splitHintColor(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().textSecondary;
+  }
+
+  private splitPaneBg(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().pageBackground;
+  }
+
+  private splitDivider(): string {
+    void this.themeRev;
+    return ThemeTokens.surface().divider;
+  }
+
   build() {
     Column() {
       if (this.useSplit) {

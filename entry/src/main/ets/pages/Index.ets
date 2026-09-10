@@ -11,7 +11,12 @@ import { FtpBrowserView } from '../components/FtpBrowserView';
 import { VncSessionView } from '../components/VncSessionView';
 import { BreakpointHelper, WindowSizeState } from '../layout/Breakpoint';
 import { RouteNames } from '../common/Constants';
-import { maybePushAfterLocalChange, syncAllCoalesced, CloudSyncServiceFactory } from '../services/CloudSyncService';
+import {
+  maybePushAfterLocalChange,
+  syncAllCoalesced,
+  CloudSyncServiceFactory,
+  SyncStatusHub
+} from '../services/CloudSyncService';
 import { AuthStore } from '../services/AuthService';
 import { ThemeTokens } from '../theme/ThemeTokens';
 import { AppSettings } from '../services/AppSettings';
@@ -39,6 +44,7 @@ struct Index {
   @State authLabel: string = '';
   @State syncStatusLabel: string = '';
   @State syncing: boolean = false;
+  @State networkHint: string = '';
 
   // SSH
   @State terminalOutput: string = '';
@@ -176,6 +182,78 @@ struct Index {
     } catch (_e) {
       // ignore
     }
+  }
+
+  private formatSyncTime(ts: number): string {
+    if (!ts || ts <= 0) {
+      return '';
+    }
+    const d = new Date(ts);
+    const pad = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  private async refreshSyncStatus(): Promise<void> {
+    if (!AuthStore.getInstance().isLoggedIn()) {
+      this.syncStatusLabel = '';
+      this.networkHint = '';
+      return;
+    }
+    let lastLabel = '';
+    try {
+      const ts = await CloudSyncServiceFactory.create().getLastSyncAt();
+      lastLabel = this.formatSyncTime(ts);
+    } catch (_e) {
+      lastLabel = '';
+    }
+    const line = SyncStatusHub.statusLine(lastLabel);
+    this.syncStatusLabel = line.length > 0 ? line :
+      (lastLabel.length > 0 ? `上次同步：${lastLabel}` : '');
+    this.networkHint = SyncStatusHub.isOffline() ? '离线' :
+      (SyncStatusHub.getLastError().length > 0 ? '同步失败' : '');
+  }
+
+  private async doPullSync(): Promise<void> {
+    if (this.syncing) {
+      return;
+    }
+    if (!AuthStore.getInstance().isLoggedIn()) {
+      return;
+    }
+    this.syncing = true;
+    try {
+      const msg = await syncAllCoalesced();
+      this.reloadHosts();
+      await this.refreshSyncStatus();
+      try {
+        promptAction.showToast({ message: msg, duration: 2400 });
+      } catch (_e) {
+        // ignore
+      }
+    } catch (e) {
+      const m = e instanceof Error ? e.message : `${e}`;
+      SyncStatusHub.markSyncError(m);
+      await this.refreshSyncStatus();
+      try {
+        promptAction.showToast({ message: `同步失败：${m}`, duration: 2800 });
+      } catch (_e) {
+        // ignore
+      }
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  private scheduleSizeChanged(widthPx: number, heightPx: number): void {
+    this.pendingWidthPx = widthPx;
+    this.pendingHeightPx = heightPx;
+    if (this.sizeDebounceTimer >= 0) {
+      clearTimeout(this.sizeDebounceTimer);
+    }
+    this.sizeDebounceTimer = setTimeout(() => {
+      this.sizeDebounceTimer = -1;
+      this.onSizeChanged(this.pendingWidthPx, this.pendingHeightPx);
+    }, 80) as number;
   }
 
   private goAccount(): void {

@@ -252,9 +252,20 @@ export async function fetchStats() {
 	return apiFetch<AdminStats>('/api/v1/admin/stats');
 }
 
-export async function fetchUsers(q?: string) {
-	const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
-	return apiFetch<AdminUser[]>(`/api/v1/admin/users${qs}`);
+export type AdminUserPage = {
+	items: AdminUser[];
+	total: number;
+	page: number;
+	page_size: number;
+};
+
+export async function fetchUsers(opts?: { q?: string; page?: number; page_size?: number }) {
+	const params = new URLSearchParams();
+	if (opts?.q?.trim()) params.set('q', opts.q.trim());
+	if (opts?.page) params.set('page', String(opts.page));
+	if (opts?.page_size) params.set('page_size', String(opts.page_size));
+	const qs = params.toString() ? `?${params.toString()}` : '';
+	return apiFetch<AdminUserPage>(`/api/v1/admin/users${qs}`);
 }
 
 export async function fetchUser(id: string) {

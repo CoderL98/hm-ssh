@@ -246,7 +246,7 @@ std::string VncClient::PollUpdate() {
     int w = (rh[4] << 8) | rh[5];
     int h = (rh[6] << 8) | rh[7];
     int32_t enc = (rh[8] << 24) | (rh[9] << 16) | (rh[10] << 8) | rh[11];
-    if (enc == 0) {
+    if (enc == 0) {  // Raw
       size_t nbytes = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
       std::vector<uint8_t> pix(nbytes);
       if (!RecvAll(pix.data(), nbytes)) return "raw pixels failed";
@@ -264,8 +264,50 @@ std::string VncClient::PollUpdate() {
           rgba_[dst + 3] = 0xFF;
         }
       }
+    } else if (enc == 1) {  // CopyRect
+      uint8_t srcXY[4];
+      if (!RecvAll(srcXY, 4)) return "CopyRect src failed";
+      int sx = (srcXY[0] << 8) | srcXY[1];
+      int sy = (srcXY[2] << 8) | srcXY[3];
+      // Copy within rgba_ (handle overlap via temp)
+      std::vector<uint8_t> tmp(static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
+      for (int row = 0; row < h; ++row) {
+        for (int col = 0; col < w; ++col) {
+          int srcX = sx + col;
+          int srcY = sy + row;
+          size_t di = static_cast<size_t>((row * w + col) * 4);
+          if (srcX < 0 || srcY < 0 || srcX >= width_ || srcY >= height_) {
+            tmp[di] = tmp[di + 1] = tmp[di + 2] = 0;
+            tmp[di + 3] = 0xFF;
+            continue;
+          }
+          size_t si = static_cast<size_t>((srcY * width_ + srcX) * 4);
+          tmp[di] = rgba_[si];
+          tmp[di + 1] = rgba_[si + 1];
+          tmp[di + 2] = rgba_[si + 2];
+          tmp[di + 3] = rgba_[si + 3];
+        }
+      }
+      for (int row = 0; row < h; ++row) {
+        int dy = y + row;
+        if (dy < 0 || dy >= height_) continue;
+        for (int col = 0; col < w; ++col) {
+          int dx = x + col;
+          if (dx < 0 || dx >= width_) continue;
+          size_t src = static_cast<size_t>((row * w + col) * 4);
+          size_t dst = static_cast<size_t>((dy * width_ + dx) * 4);
+          rgba_[dst] = tmp[src];
+          rgba_[dst + 1] = tmp[src + 1];
+          rgba_[dst + 2] = tmp[src + 2];
+          rgba_[dst + 3] = tmp[src + 3];
+        }
+      }
+    } else if (enc == 7 || enc == 16) {
+      // Tight (7) / ZRLE (16) — zlib inflate path not linked; fail clearly.
+      return "unsupported encoding " + std::to_string(enc) +
+             " (Tight/ZRLE stub: link zlib + implement decoder; Raw+CopyRect OK)";
     } else {
-      return "unsupported encoding " + std::to_string(enc) + " (only Raw; TODO CopyRect)";
+      return "unsupported encoding " + std::to_string(enc) + " (supported: Raw=0, CopyRect=1)";
     }
   }
   uint8_t fur[10] = {

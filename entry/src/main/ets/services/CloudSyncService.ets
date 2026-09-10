@@ -93,14 +93,21 @@ export class HttpCloudSyncService implements ICloudSyncService {
     const remoteHosts = remoteJson.map((j: HostJson) => HostConfig.fromJson(j));
 
     if (serverTs > localTs) {
-      const localDirty = localList.length > 0;
+      // 本地在上次同步确认后仍有改动 → 轻量冲突（非完整三路编辑器）
+      const localDirty = localList.some((h: HostConfig) => h.updatedAt > localTs);
       const merged = mergeHostsByUpdatedAt(localList, remoteHosts);
       await store.replaceAll(merged);
       await this.setMeta(KEY_HOSTS_TS, serverTs);
       await this.pushHostsInternal(token);
       if (localDirty) {
-        return `主机：云端较新，已按条目时间合并（${merged.length} 条；同 id 取较新）`;
+        SyncStatusHub.stashHostsConflict(localList, remoteHosts);
+        SyncStatusHub.setConflict(
+          'hosts',
+          `主机冲突：云端与本地均有较新变更，已按条目 updatedAt 合并（${merged.length} 条）。可在帐号页选择「保留本地」或「使用云端」。`
+        );
+        return `主机：同步冲突已自动合并（${merged.length} 条；同 id 取较新）`;
       }
+      SyncStatusHub.clearConflictIf('hosts');
       return `主机：已按服务端时间合并（${merged.length} 条）`;
     }
 
@@ -146,8 +153,22 @@ export class HttpCloudSyncService implements ICloudSyncService {
     }
 
     if (serverTs > localTs) {
+      // 设置整包：服务端较新时覆盖；若本地曾推送过则提示冲突已取云端
+      const localTouched = localTs > 0;
+      const localSnap = theme.exportCloudSettings();
+      if (localTouched) {
+        SyncStatusHub.stashSettingsConflict(localSnap, data);
+      }
       await theme.applyCloudSettings(data);
       await this.setMeta(KEY_SETTINGS_TS, serverTs);
+      if (localTouched) {
+        SyncStatusHub.setConflict(
+          'settings',
+          '设置冲突：云端较新，已应用云端整包。可在帐号页选择「保留本地」或确认「使用云端」。'
+        );
+        return '设置：同步冲突，已应用云端（可帐号页改回本地）';
+      }
+      SyncStatusHub.clearConflictIf('settings');
       return '设置：已从云端合并';
     }
     await this.pushSettingsInternal(token);
@@ -311,7 +332,13 @@ class SyncCoordinator {
     const svc = CloudSyncServiceFactory.create();
     this.syncInFlight = (async () => {
       try {
-        return await svc.syncAll();
+        const msg = await svc.syncAll();
+        SyncStatusHub.markSyncOk();
+        return msg;
+      } catch (e) {
+        const m = e instanceof Error ? e.message : `${e}`;
+        SyncStatusHub.markSyncError(m);
+        throw e;
       } finally {
         this.syncInFlight = null;
       }
@@ -369,8 +396,11 @@ class SyncCoordinator {
       } else {
         await svc.pushSettings();
       }
-    } catch (_e) {
-      // 后台同步失败不影响本地保存
+      SyncStatusHub.markSyncOk();
+    } catch (e) {
+      // 后台同步失败不影响本地保存；记录错误供状态行展示
+      const m = e instanceof Error ? e.message : `${e}`;
+      SyncStatusHub.markSyncError(m);
     }
   }
 }
@@ -387,6 +417,203 @@ export async function syncAllCoalesced(): Promise<string> {
  */
 export async function maybePushAfterLocalChange(kind: 'hosts' | 'settings'): Promise<void> {
   SYNC_COORD.schedulePush(kind);
+}
+
+
+/** 同步状态中枢：最近错误 / 离线感 / 轻量冲突文案（供 Index / Account 展示） */
+export class SyncStatusHub {
+  private static lastError: string = '';
+  private static offline: boolean = false;
+  private static conflictKind: string = '';
+  private static conflictMessage: string = '';
+  /** 冲突时暂存的本地 / 云端主机快照（JSON），供保留本地 / 使用云端 */
+  private static stashLocalHostsJson: string = '';
+  private static stashRemoteHostsJson: string = '';
+  private static stashLocalSettings: CloudSettingsJson | null = null;
+  private static stashRemoteSettings: CloudSettingsJson | null = null;
+
+  static markSyncOk(): void {
+    SyncStatusHub.lastError = '';
+    SyncStatusHub.offline = false;
+  }
+
+  static markSyncError(msg: string): void {
+    const m = (msg ?? '').trim();
+    SyncStatusHub.lastError = m.length > 0 ? m : '同步失败';
+    const low = SyncStatusHub.lastError.toLowerCase();
+    if (low.indexOf('network') >= 0 ||
+      low.indexOf('failed to connect') >= 0 ||
+      low.indexOf('timeout') >= 0 ||
+      low.indexOf('timed out') >= 0 ||
+      low.indexOf('econn') >= 0 ||
+      low.indexOf('offline') >= 0 ||
+      low.indexOf('无法连接') >= 0 ||
+      low.indexOf('网络') >= 0) {
+      SyncStatusHub.offline = true;
+    }
+  }
+
+  static markOffline(hint?: string): void {
+    SyncStatusHub.offline = true;
+    if (hint && hint.length > 0) {
+      SyncStatusHub.lastError = hint;
+    }
+  }
+
+  static markOnline(): void {
+    SyncStatusHub.offline = false;
+  }
+
+  static isOffline(): boolean {
+    return SyncStatusHub.offline;
+  }
+
+  static getLastError(): string {
+    return SyncStatusHub.lastError;
+  }
+
+  static setConflict(kind: string, message: string): void {
+    SyncStatusHub.conflictKind = kind;
+    SyncStatusHub.conflictMessage = message;
+  }
+
+  static stashHostsConflict(local: HostConfig[], remote: HostConfig[]): void {
+    const vault = false;
+    SyncStatusHub.stashLocalHostsJson = JSON.stringify(local.map((h: HostConfig) => h.toJson()));
+    SyncStatusHub.stashRemoteHostsJson = JSON.stringify(remote.map((h: HostConfig) => h.toJson()));
+  }
+
+  static stashSettingsConflict(local: CloudSettingsJson, remote: CloudSettingsJson): void {
+    SyncStatusHub.stashLocalSettings = local;
+    SyncStatusHub.stashRemoteSettings = remote;
+  }
+
+  static takeStashLocalHosts(): HostConfig[] | null {
+    if (!SyncStatusHub.stashLocalHostsJson) {
+      return null;
+    }
+    try {
+      const arr = JSON.parse(SyncStatusHub.stashLocalHostsJson) as HostJson[];
+      return arr.map((j: HostJson) => HostConfig.fromJson(j));
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  static takeStashRemoteHosts(): HostConfig[] | null {
+    if (!SyncStatusHub.stashRemoteHostsJson) {
+      return null;
+    }
+    try {
+      const arr = JSON.parse(SyncStatusHub.stashRemoteHostsJson) as HostJson[];
+      return arr.map((j: HostJson) => HostConfig.fromJson(j));
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  static takeStashLocalSettings(): CloudSettingsJson | null {
+    return SyncStatusHub.stashLocalSettings;
+  }
+
+  static takeStashRemoteSettings(): CloudSettingsJson | null {
+    return SyncStatusHub.stashRemoteSettings;
+  }
+
+  static clearConflictIf(kind: string): void {
+    if (SyncStatusHub.conflictKind === kind) {
+      SyncStatusHub.clearConflict();
+    }
+  }
+
+  static clearConflict(): void {
+    SyncStatusHub.conflictKind = '';
+    SyncStatusHub.conflictMessage = '';
+    SyncStatusHub.stashLocalHostsJson = '';
+    SyncStatusHub.stashRemoteHostsJson = '';
+    SyncStatusHub.stashLocalSettings = null;
+    SyncStatusHub.stashRemoteSettings = null;
+  }
+
+  static getConflictKind(): string {
+    return SyncStatusHub.conflictKind;
+  }
+
+  static getConflictMessage(): string {
+    return SyncStatusHub.conflictMessage;
+  }
+
+  static statusLine(lastSyncLabel: string): string {
+    if (SyncStatusHub.offline) {
+      return SyncStatusHub.lastError.length > 0 ?
+        `离线 · ${SyncStatusHub.lastError}` : '离线';
+    }
+    if (SyncStatusHub.lastError.length > 0) {
+      return `同步失败：${SyncStatusHub.lastError}`;
+    }
+    if (SyncStatusHub.conflictMessage.length > 0) {
+      return SyncStatusHub.conflictMessage;
+    }
+    if (lastSyncLabel.length > 0) {
+      return `上次同步：${lastSyncLabel}`;
+    }
+    return '';
+  }
+}
+
+/** 冲突解决：强制保留本地快照并上传 */
+export async function resolveConflictKeepLocal(): Promise<string> {
+  const kind = SyncStatusHub.getConflictKind();
+  const store = HostStore.getInstance();
+  if (kind === 'settings') {
+    const local = SyncStatusHub.takeStashLocalSettings();
+    if (local) {
+      await ThemeStore.getInstance().applyCloudSettings(local);
+    }
+    await CloudSyncServiceFactory.create().pushSettings();
+    SyncStatusHub.clearConflict();
+    SyncStatusHub.markSyncOk();
+    return '已保留本地设置并上传云端';
+  }
+  const localHosts = SyncStatusHub.takeStashLocalHosts();
+  if (localHosts) {
+    await store.replaceAll(localHosts);
+  }
+  await CloudSyncServiceFactory.create().pushHosts();
+  SyncStatusHub.clearConflict();
+  SyncStatusHub.markSyncOk();
+  return '已保留本地主机并上传云端';
+}
+
+/** 冲突解决：强制使用云端快照 */
+export async function resolveConflictUseCloud(): Promise<string> {
+  const kind = SyncStatusHub.getConflictKind();
+  const store = HostStore.getInstance();
+  if (kind === 'settings') {
+    const remote = SyncStatusHub.takeStashRemoteSettings();
+    if (remote) {
+      await ThemeStore.getInstance().applyCloudSettings(remote);
+    }
+    await CloudSyncServiceFactory.create().pushSettings();
+    SyncStatusHub.clearConflict();
+    SyncStatusHub.markSyncOk();
+    return '已使用云端设置';
+  }
+  const remoteHosts = SyncStatusHub.takeStashRemoteHosts();
+  if (remoteHosts) {
+    // 吸收本地机密后整表采用云端
+    const withSecrets = remoteHosts.map((h: HostConfig) => {
+      const copy = h.clone();
+      const prev = store.getAll().find((x: HostConfig) => x.id === h.id);
+      copy.absorbLocalSecrets(prev);
+      return copy;
+    });
+    await store.replaceAll(withSecrets);
+  }
+  await CloudSyncServiceFactory.create().pushHosts();
+  SyncStatusHub.clearConflict();
+  SyncStatusHub.markSyncOk();
+  return '已使用云端主机列表';
 }
 
 /** 按 host.id 合并，updatedAt 较大者胜出；云端空机密时保留本地 password/privateKey */

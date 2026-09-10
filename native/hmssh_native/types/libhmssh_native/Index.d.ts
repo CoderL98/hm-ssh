@@ -4,12 +4,18 @@ export interface NativeConnectParams {
   username: string;
   password?: string;
   privateKey?: string;
+  /** SSH: optional OpenSSH known_hosts file path */
+  knownHostsPath?: string;
+  /** FTP: request explicit FTPS (AUTH TLS); errors clearly if TLS not linked */
+  useTls?: boolean;
 }
 
 export interface NativeConnectResult {
   ok: boolean;
   error: string;
   id: number;
+  /** SSH: recorded host key fingerprint (stub/SHA256-stub) for UI confirm */
+  hostKeyFingerprint?: string;
 }
 
 export interface NativeFtpEntry {

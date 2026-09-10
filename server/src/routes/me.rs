@@ -7,7 +7,7 @@ use crate::routes::AuthUser;
 use crate::state::AppState;
 use axum::extract::State;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub async fn me(
@@ -114,4 +114,55 @@ async fn change_password_issue(
     // Mirror auth::issue_tokens by going through a public path: reuse login issuance via module.
     // auth::issue_tokens is private — call auth helper by re-exporting through login-equivalent.
     auth::issue_tokens_for(state, user).await
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteAccountRequest {
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteAccountResponse {
+    pub ok: bool,
+}
+
+/// Self-service account deletion: verify password, soft-delete user, wipe sync blobs, revoke tokens.
+pub async fn delete_account(
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+    Json(body): Json<DeleteAccountRequest>,
+) -> AppResult<Json<DeleteAccountResponse>> {
+    if body.password.is_empty() {
+        return Err(AppError::BadRequest("password required".into()));
+    }
+
+    let user = db::find_user_by_id(&state.pool, &claims.sub)
+        .await?
+        .ok_or_else(|| AppError::NotFound("user not found".into()))?;
+    if user.deleted_at.is_some() {
+        return Err(AppError::BadRequest("account already deleted".into()));
+    }
+
+    let ok = verify_password(&body.password, &user.password_hash).map_err(AppError::Internal)?;
+    if !ok {
+        return Err(AppError::Unauthorized("invalid password".into()));
+    }
+
+    db::soft_delete_user(&state.pool, &user.id).await?;
+    let _ = db::delete_user_sync_blobs(&state.pool, &user.id).await;
+
+    state.cache.del(&auth_user_key(&user.id)).await;
+    state.cache.del(&profile_key(&user.id)).await;
+    state.cache.del(&session_key(&user.id)).await;
+    let now = chrono::Utc::now().timestamp().to_string();
+    state
+        .cache
+        .set(
+            &revoke_key(&user.id),
+            now,
+            Duration::from_secs(state.config.jwt_refresh_ttl_secs as u64),
+        )
+        .await;
+
+    Ok(Json(DeleteAccountResponse { ok: true }))
 }

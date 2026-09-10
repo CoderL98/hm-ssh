@@ -50,6 +50,16 @@ impl From<&db::UserRow> for AdminUserView {
 #[derive(Debug, Deserialize)]
 pub struct ListUsersQuery {
     pub q: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminUserPage {
+    pub items: Vec<AdminUserView>,
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,10 +120,17 @@ pub async fn list_users(
     State(state): State<AppState>,
     auth: AuthUser,
     Query(q): Query<ListUsersQuery>,
-) -> AppResult<Json<Vec<AdminUserView>>> {
+) -> AppResult<Json<AdminUserPage>> {
     require_admin(&state, &auth).await?;
-    let users = db::list_users(&state.pool, q.q.as_deref()).await?;
-    Ok(Json(users.iter().map(AdminUserView::from).collect()))
+    let page = q.page.unwrap_or(1);
+    let page_size = q.page_size.unwrap_or(20);
+    let result = db::list_users_page(&state.pool, q.q.as_deref(), page, page_size).await?;
+    Ok(Json(AdminUserPage {
+        items: result.items.iter().map(AdminUserView::from).collect(),
+        total: result.total,
+        page: result.page,
+        page_size: result.page_size,
+    }))
 }
 
 pub async fn get_user(
@@ -171,6 +188,7 @@ pub async fn delete_user(
         return Err(AppError::BadRequest("cannot delete yourself".into()));
     }
     db::soft_delete_user(&state.pool, &id).await?;
+    let _ = db::delete_user_sync_blobs(&state.pool, &id).await;
     revoke_sessions(&state, &id).await;
     Ok(Json(OkResponse { ok: true }))
 }

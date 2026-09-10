@@ -102,7 +102,7 @@ pub fn router(state: AppState) -> axum::Router {
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/refresh", post(auth::refresh))
         .route("/api/v1/auth/logout", post(auth::logout))
-        .route("/api/v1/me", get(me::me))
+        .route("/api/v1/me", get(me::me).delete(me::delete_account))
         .route("/api/v1/me/password", post(me::change_password))
         .route(
             "/api/v1/sync/hosts",

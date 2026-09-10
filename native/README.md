@@ -32,8 +32,8 @@ entry/src/main/cpp/
 | 协议 | 依赖 | 说明 |
 | --- | --- | --- |
 | SSH | **libssh2** + OpenSSL/mbedTLS | 需 OHOS NDK 交叉编译后放入 `third_party/libssh2` 或设 `HMSSH_LIBSSH2_ROOT`；未链接时 `sshConnect` 报错 |
-| FTP | 无（自研 PASV 客户端） | 控制连接 + LIST/CWD/RETR/STOR |
-| VNC | 无（自研 RFB 3.8） | Security None / VNC Auth；Framebuffer **Raw**；CopyRect 等为 TODO |
+| FTP | 无（自研 PASV 客户端） | 控制连接 + LIST/CWD/RETR/STOR；`useTls` 显式 FTPS 钩子（未链 OpenSSL 时清晰报错） |
+| VNC | 无（自研 RFB 3.8） | Security None / VNC Auth；Framebuffer **Raw + CopyRect**；Tight/ZRLE 需 zlib（stub 报错） |
 
 详见 `hmssh_native/third_party/README.md`。
 
@@ -71,3 +71,27 @@ ArkTS：`import native from 'libhmssh_native.so'`；加载失败则工厂使用 
 ## 与 Mock 的关系
 
 设置页开关「使用原生协议（需编译 native）」为 ON 且 `.so` 可用时走 Native；否则或连接失败时可回退（工厂优先 Native，不可用则 Mock）。UI 始终通过 `ISshSession` / `IFtpSession` / `IVncSession` 接缝。
+
+## 会话选项扩展（2026-09）
+
+### SSH：known_hosts / 主机密钥确认
+
+`NativeConnectParams.knownHostsPath`（可选）指向 OpenSSH `known_hosts` 文件。
+
+- C++：`SshClient::SetHostKeyCallback` + `LastHostKeyFingerprint()`；握手后记录指纹（libssh2 下为 `SHA256-stub:` + hostkey 前缀 hex）。
+- NAPI：`sshConnect` 结果含 `hostKeyFingerprint`，供 ArkTS 弹窗确认。
+- **完整** `libssh2_knownhost_readfile` 校验仍为 TODO（需 DevEco 链接 libssh2 后启用）；当前路径参数已接入，未设置回调时默认接受并记录指纹。
+
+### FTP：显式 FTPS / TLS
+
+`NativeConnectParams.useTls = true` 时在 greeting 后走 AUTH TLS 钩子。
+
+- 未链接 OpenSSL/mbedTLS：`ftpConnect` 返回明确错误（不静默降级）。
+- TODO：`AUTH TLS` + `PBSZ 0` + `PROT P` + TLS 包装控制/数据通道。
+
+### VNC：额外编码
+
+- **已实现**：Raw (0)、CopyRect (1)
+- **Stub**：Tight (7)、ZRLE (16) — 返回需 zlib 的说明错误
+- 后续：接入 zlib 后实现 Tight/ZRLE 解码
+

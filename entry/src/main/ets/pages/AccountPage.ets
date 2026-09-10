@@ -2,7 +2,13 @@ import { promptAction, router } from '@kit.ArkUI';
 import { ThemeStore } from '../services/ThemeStore';
 import { ThemeTokens } from '../theme/ThemeTokens';
 import { AuthServiceFactory, AuthStore } from '../services/AuthService';
-import { CloudSyncServiceFactory, syncAllCoalesced } from '../services/CloudSyncService';
+import {
+  CloudSyncServiceFactory,
+  syncAllCoalesced,
+  SyncStatusHub,
+  resolveConflictKeepLocal,
+  resolveConflictUseCloud
+} from '../services/CloudSyncService';
 import { CloudConfig } from '../common/Constants';
 import { AppSettings } from '../services/AppSettings';
 import { HostStore } from '../services/HostStore';
@@ -34,6 +40,9 @@ struct AccountPage {
   @State huksStatus: string = '';
   @State currentPassword: string = '';
   @State newPassword: string = '';
+  @State deletePassword: string = '';
+  @State conflictMessage: string = '';
+  @State syncErrorHint: string = '';
 
   aboutToAppear(): void {
     this.hydrateFromStores();
@@ -74,6 +83,9 @@ struct AccountPage {
     this.displayName = u ? u.username : '';
     this.displayEmail = u ? u.email : '';
     void this.refreshLastSyncLabel();
+    this.conflictMessage = SyncStatusHub.getConflictMessage();
+    this.syncErrorHint = SyncStatusHub.isOffline() ? '离线' :
+      (SyncStatusHub.getLastError().length > 0 ? `同步失败：${SyncStatusHub.getLastError()}` : '');
   }
 
   private async refreshLastSyncLabel(): Promise<void> {
@@ -284,6 +296,82 @@ struct AccountPage {
     }
   }
 
+  private async doDeleteAccount(): Promise<void> {
+    if (this.busy) {
+      return;
+    }
+    if (this.deletePassword.length < 1) {
+      this.toast('请填写密码以确认删除帐号');
+      return;
+    }
+    this.busy = true;
+    this.statusText = '';
+    try {
+      const auth = AuthServiceFactory.create();
+      if (!auth.deleteAccount) {
+        this.toast('当前后端不支持删除帐号');
+        return;
+      }
+      await auth.deleteAccount(this.deletePassword);
+      this.deletePassword = '';
+      await AppSettings.getInstance().clearVaultPassphrase(true);
+      this.vaultPassphrase = '';
+      this.refreshSession();
+      this.toast('帐号已删除');
+      this.statusText = '帐号已删除，本地会话已清除';
+    } catch (e) {
+      const m = this.formatAuthError(e as Error);
+      this.toast(m);
+      this.statusText = m;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async doResolveKeepLocal(): Promise<void> {
+    if (this.busy) {
+      return;
+    }
+    this.busy = true;
+    try {
+      const msg = await resolveConflictKeepLocal();
+      this.conflictMessage = '';
+      this.statusText = msg;
+      this.toast(msg);
+      this.bumpHostsUi();
+      await this.refreshLastSyncLabel();
+      this.refreshSession();
+    } catch (e) {
+      const m = this.formatAuthError(e as Error);
+      this.toast(m);
+      this.statusText = m;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async doResolveUseCloud(): Promise<void> {
+    if (this.busy) {
+      return;
+    }
+    this.busy = true;
+    try {
+      const msg = await resolveConflictUseCloud();
+      this.conflictMessage = '';
+      this.statusText = msg;
+      this.toast(msg);
+      this.bumpHostsUi();
+      await this.refreshLastSyncLabel();
+      this.refreshSession();
+    } catch (e) {
+      const m = this.formatAuthError(e as Error);
+      this.toast(m);
+      this.statusText = m;
+    } finally {
+      this.busy = false;
+    }
+  }
+
   private async doLogout(): Promise<void> {
     if (this.busy) {
       return;
@@ -315,16 +403,21 @@ struct AccountPage {
       const msg = await syncAllCoalesced();
       this.bumpHostsUi();
       this.statusText = msg;
-      if (msg.indexOf('已从云端合并') >= 0) {
-        this.toast('已从云端合并');
+      if (msg.indexOf('冲突') >= 0 || msg.indexOf('已从云端合并') >= 0) {
+        this.toast(msg.indexOf('冲突') >= 0 ? '同步完成（存在冲突，见下方）' : '已从云端合并');
       } else {
         this.toast(msg);
       }
       await this.refreshLastSyncLabel();
+      this.conflictMessage = SyncStatusHub.getConflictMessage();
+      this.syncErrorHint = '';
     } catch (e) {
       const m = this.formatAuthError(e as Error);
+      SyncStatusHub.markSyncError(m);
       this.toast(m);
       this.statusText = m;
+      this.syncErrorHint = SyncStatusHub.isOffline() ? '离线' : `同步失败：${m}`;
+      this.conflictMessage = SyncStatusHub.getConflictMessage();
     } finally {
       this.busy = false;
     }
@@ -479,7 +572,38 @@ struct AccountPage {
                 .fontSize(12)
                 .fontColor(this.textSecondary())
                 .width('100%')
+                .padding({ left: 16, right: 16, bottom: 8 })
+              if (this.syncErrorHint.length > 0) {
+                Text(this.syncErrorHint)
+                  .fontSize(12)
+                  .fontColor('#E84026')
+                  .width('100%')
+                  .padding({ left: 16, right: 16, bottom: 8 })
+              }
+              if (this.conflictMessage.length > 0) {
+                Text(this.conflictMessage)
+                  .fontSize(12)
+                  .fontColor(this.textSecondary())
+                  .width('100%')
+                  .padding({ left: 16, right: 16, bottom: 8 })
+                Row() {
+                  Text($r('app.string.account_conflict_keep_local'))
+                    .fontSize(15)
+                    .fontColor(this.accent())
+                    .padding({ right: 16 })
+                    .onClick(() => {
+                      this.doResolveKeepLocal();
+                    })
+                  Text($r('app.string.account_conflict_use_cloud'))
+                    .fontSize(15)
+                    .fontColor(this.accent())
+                    .onClick(() => {
+                      this.doResolveUseCloud();
+                    })
+                }
+                .width('100%')
                 .padding({ left: 16, right: 16, bottom: 12 })
+              }
               Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
               Row() {
                 Text(this.busy ? $r('app.string.account_busy') : $r('app.string.account_sync_now'))
@@ -523,6 +647,33 @@ struct AccountPage {
               .opacity(this.busy ? 0.5 : 1)
               .onClick(() => {
                 this.doChangePassword();
+              })
+              Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+              Text($r('app.string.account_delete'))
+                .fontSize(13)
+                .fontColor(this.textSecondary())
+                .width('100%')
+                .padding({ left: 16, right: 16, top: 12, bottom: 4 })
+              Text($r('app.string.account_delete_hint'))
+                .fontSize(12)
+                .fontColor(this.textSecondary())
+                .width('100%')
+                .padding({ left: 16, right: 16, bottom: 8 })
+              this.field($r('app.string.account_delete_password'), this.deletePassword, (v: string) => {
+                this.deletePassword = v;
+              }, true)
+              Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+              Row() {
+                Text(this.busy ? $r('app.string.account_busy') : $r('app.string.account_delete_btn'))
+                  .fontSize(16)
+                  .fontColor('#E84026')
+                  .layoutWeight(1)
+              }
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+              .opacity(this.busy ? 0.5 : 1)
+              .onClick(() => {
+                this.doDeleteAccount();
               })
               Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
               Row() {

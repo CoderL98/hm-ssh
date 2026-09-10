@@ -15,6 +15,8 @@ struct FtpListEntry {
 
 /**
  * Minimal FTP client (control + PASV data). Uses BSD sockets available on OHOS.
+ * ConnectParams.useTls: optional explicit FTPS (AUTH TLS). Without OpenSSL linked,
+ * Connect returns a clear TODO error when useTls is true.
  */
 class FtpClient {
  public:
@@ -38,6 +40,7 @@ class FtpClient {
  private:
   mutable std::mutex mu_;
   bool connected_{false};
+  bool tlsRequested_{false};
   int ctrlSock_{-1};
   std::string cwd_{"/"};
   std::string lastReply_;

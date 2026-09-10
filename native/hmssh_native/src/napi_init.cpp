@@ -39,6 +39,14 @@ int GetIntProp(napi_env env, napi_value obj, const char* key, int def) {
   return out;
 }
 
+bool GetBoolProp(napi_env env, napi_value obj, const char* key, bool def) {
+  napi_value v;
+  if (napi_get_named_property(env, obj, key, &v) != napi_ok) return def;
+  bool out = def;
+  napi_get_value_bool(env, v, &out);
+  return out;
+}
+
 napi_value MakeString(napi_env env, const std::string& s) {
   napi_value out;
   napi_create_string_utf8(env, s.c_str(), s.size(), &out);
@@ -64,6 +72,12 @@ hmssh::ConnectParams ParseConnect(napi_env env, napi_value obj) {
   p.username = GetStringProp(env, obj, "username");
   p.password = GetStringProp(env, obj, "password");
   p.privateKey = GetStringProp(env, obj, "privateKey");
+  p.knownHostsPath = GetStringProp(env, obj, "knownHostsPath");
+  // also accept snake_case from some callers
+  if (p.knownHostsPath.empty()) {
+    p.knownHostsPath = GetStringProp(env, obj, "known_hosts_path");
+  }
+  p.useTls = GetBoolProp(env, obj, "useTls", false) || GetBoolProp(env, obj, "use_tls", false);
   return p;
 }
 
@@ -85,14 +99,17 @@ napi_value SshConnect(napi_env env, napi_callback_info info) {
     napi_set_named_property(env, result, "ok", MakeBool(env, false));
     napi_set_named_property(env, result, "error", MakeString(env, err));
     napi_set_named_property(env, result, "id", MakeInt(env, 0));
+    napi_set_named_property(env, result, "hostKeyFingerprint", MakeString(env, client->LastHostKeyFingerprint()));
     return result;
   }
+  std::string fp = client->LastHostKeyFingerprint();
   std::lock_guard<std::mutex> lock(gMu);
   int id = gNextId++;
   gSsh[id] = std::move(client);
   napi_set_named_property(env, result, "ok", MakeBool(env, true));
   napi_set_named_property(env, result, "error", MakeString(env, ""));
   napi_set_named_property(env, result, "id", MakeInt(env, id));
+  napi_set_named_property(env, result, "hostKeyFingerprint", MakeString(env, fp));
   return result;
 }
 

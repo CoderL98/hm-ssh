@@ -196,7 +196,7 @@ pnpm install && pnpm dev           # http://localhost:5173
 | --- | --- | --- |
 | SSH | Mock + **Native 源码**（libssh2） | DevEco 链接 libssh2 后 `sshConnect` 可用；未链接时 Native connect 报错并回退 Mock |
 | FTP | Mock + **Native 自研 PASV** | 无需三方库；需编译 `.so` |
-| VNC | Mock + **Native RFB Raw** | None/VNC Auth；CopyRect 等为 TODO |
+| VNC | Mock + **Native RFB Raw+CopyRect** | None/VNC Auth；Tight/ZRLE 需 zlib |
 | 凭据 / Token | **HUKS AES** 落盘 | 明文仅内存；迁移旧明文 |
 | 云端机密 | 可选保险柜 | 帐号页「同步加密密钥到云端」+ 口令 |
 
@@ -219,17 +219,20 @@ pnpm install && pnpm dev           # http://localhost:5173
 - 服务端：`DefaultBodyLimit`、hosts 条数上限、拒绝 null sync、`/health` 含 db/cache/uptime、SIGTERM 优雅退出、gzip/br 压缩
 - Admin：用户搜索 **300ms 防抖**、骨架屏、禁用/删除确认；仪表盘展示健康细节
 - 客户端：`windowSizeChange` 布局防抖；Index 会话延后到分栏连接再建
+- **Admin 真分页** `GET /api/v1/admin/users?q=&page=&page_size=` → `{ items, total, page, page_size }`；列表含已删除用户
+- **自助删号** `DELETE /api/v1/me`（密码确认）软删 + 清 sync blobs + 吊销令牌；帐号页确认 UI
+- **离线 / 同步失败** 状态行（Index 已登录）；SyncStatusHub 记录最近错误，同步不崩溃
+- **同步冲突 UX**：本地 dirty + 云端较新时更清晰文案；帐号页可选「保留本地 / 使用云端」
+- Native：SSH `knownHostsPath` + host key fingerprint stub；FTP `useTls` FTPS 钩子；VNC CopyRect + Tight/ZRLE stub；见 native/README
 
 ### 仍待 / 需 DevEco
 
-- **链接 libssh2**：在 OHOS NDK 交叉编译并放入 `third_party/libssh2`（见 native/README）
-- VNC 更多编码（CopyRect/Tight/ZRLE）；FTP TLS；PixelMap 完整绘制链路打磨
-- known_hosts / 主机密钥校验
+- **链接 libssh2**：在 OHOS NDK 交叉编译并放入 `third_party/libssh2`（见 native/README）；完整 known_hosts 校验
+- VNC Tight/ZRLE（需 zlib）；FTP AUTH TLS 真实现（需 OpenSSL）；PixelMap 完整绘制链路打磨
 - 图标；平板 / PC 多窗口与快捷键；终端 ANSI 彩色
 - 真机请将帐号页基址改为局域网 IP（出厂默认 10.0.2.2 面向模拟器）
 - 本环境未跑 DevEco/hvigor；分布式限流需 Redis
-- Admin 真正分页（当前服务端 LIMIT 200 + 搜索）；删除帐号自助（仅软删管理员侧）
-- 离线指示器细化（系统网络状态 API）；冲突三路合并 UI
+- 系统级网络状态 API 订阅（当前以同步失败推断离线）；完整三路合并编辑器
 
 ## 许可
 

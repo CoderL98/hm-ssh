@@ -14,11 +14,12 @@ English + 中文说明如下。
 | `POST /api/v1/auth/logout` | 注销（吊销会话缓存，需 Bearer） |
 | `GET /api/v1/me` | 当前用户（需 Bearer） |
 | `POST /api/v1/me/password` | 改密 `{ current_password, new_password }` → 新 JWT |
+| `DELETE /api/v1/me` | 自助删号 `{ password }`：软删 + 清 sync blobs + 吊销令牌 |
 | `GET/PUT /api/v1/sync/hosts` | 主机列表 JSON 同步（服务端剥离 password/privateKey） |
 | `GET/PUT /api/v1/sync/settings` | 主题/设置 JSON 同步 |
 | `GET /health` | 健康检查（status/db/db_backend/cache/uptime_ms；db 失败 → 503） |
 | `GET /api/v1/admin/stats` | 管理统计（需 admin） |
-| `GET /api/v1/admin/users?q=` | 用户列表 / 搜索 |
+| `GET /api/v1/admin/users?q=&page=&page_size=` | 用户分页列表（含已删除）`{ items, total, page, page_size }` |
 | `GET /api/v1/admin/users/:id` | 用户详情 |
 | `PATCH /api/v1/admin/users/:id` | `{ disabled? }` 启用/禁用 |
 | `DELETE /api/v1/admin/users/:id` | 软删除 |

@@ -17,7 +17,7 @@ struct VncFramebuffer {
  * - ProtocolVersion handshake
  * - SecurityType None (1) or VNC Authentication (2)
  * - ClientInit / ServerInit
- * - FramebufferUpdateRequest + Raw encoding (TODO: CopyRect / tight / zrle)
+ * - FramebufferUpdateRequest + Raw + CopyRect; Tight/ZRLE stub (need zlib)
  */
 class VncClient {
  public:

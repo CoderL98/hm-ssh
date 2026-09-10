@@ -39,6 +39,7 @@ export interface IAuthService {
   logout(): Promise<void>;
   refresh?(): Promise<AuthTokens>;
   changePassword?(currentPassword: string, newPassword: string): Promise<AuthTokens>;
+  deleteAccount?(password: string): Promise<void>;
 }
 
 /**
@@ -334,6 +335,19 @@ export class HttpAuthService implements IAuthService {
     return tokens;
   }
 
+  async deleteAccount(password: string): Promise<void> {
+    const store = AuthStore.getInstance();
+    const token = await store.ensureFreshAccessToken();
+    if (!token) {
+      throw new Error('未登录');
+    }
+    if (!password || password.length < 1) {
+      throw new Error('请填写密码以确认删除');
+    }
+    await cloudRequest('DELETE', '/api/v1/me', { password: password }, token);
+    await store.clearSession();
+  }
+
   private async postAuth(path: string, body: object): Promise<AuthTokens> {
     const raw = await cloudRequestRaw('POST', path, body, null);
     const tokens = parseAuthResponse(raw);
@@ -395,6 +409,16 @@ export class MockAuthService implements IAuthService {
       throw new Error('未登录');
     }
     return this.fakeSession(u.email, u.username);
+  }
+
+  async deleteAccount(password: string): Promise<void> {
+    if (!password || password.length < 1) {
+      throw new Error('请填写密码以确认删除');
+    }
+    if (!AuthStore.getInstance().getUser()) {
+      throw new Error('未登录');
+    }
+    await AuthStore.getInstance().clearSession();
   }
 
   private async fakeSession(email: string, username: string): Promise<AuthTokens> {

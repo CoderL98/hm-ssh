@@ -64,6 +64,60 @@ void SshClient::CleanupUnlocked() {
   connected_ = false;
 }
 
+void SshClient::SetHostKeyCallback(HostKeyCallback cb) {
+  std::lock_guard<std::mutex> lock(mu_);
+  hostKeyCallback_ = std::move(cb);
+}
+
+std::string SshClient::LastHostKeyFingerprint() {
+  std::lock_guard<std::mutex> lock(mu_);
+  return lastHostKeyFingerprint_;
+}
+
+bool SshClient::CheckHostKeyUnlocked(const ConnectParams& params, void* session) {
+  // Stub: produce a deterministic placeholder fingerprint for UI confirm.
+  // When HMSSH_HAS_LIBSSH2: prefer libssh2_session_hostkey + SHA256.
+  std::string fp = "SHA256:pending-hostkey-verify";
+#if defined(HMSSH_HAS_LIBSSH2)
+  if (session) {
+    size_t len = 0;
+    int type = 0;
+    const char* key = libssh2_session_hostkey(static_cast<LIBSSH2_SESSION*>(session), &len, &type);
+    if (key && len > 0) {
+      // Lightweight hex prefix — full SHA256 base64 TODO (needs OpenSSL EVP or libssh2 hash helpers)
+      char buf[64];
+      size_t n = len < 16 ? len : 16;
+      static const char* hex = "0123456789abcdef";
+      std::string hx;
+      hx.reserve(n * 2);
+      for (size_t i = 0; i < n; ++i) {
+        unsigned char c = static_cast<unsigned char>(key[i]);
+        hx.push_back(hex[(c >> 4) & 0xf]);
+        hx.push_back(hex[c & 0xf]);
+      }
+      fp = "SHA256-stub:" + hx;
+      (void)buf;
+      (void)type;
+    }
+    // TODO(DevEco): libssh2_knownhost_readfile(params.knownHostsPath) + check
+    if (!params.knownHostsPath.empty()) {
+      // Path recorded for future known_hosts check; currently advisory only.
+      knownHostsPath_ = params.knownHostsPath;
+    }
+  }
+#else
+  (void)session;
+  if (!params.knownHostsPath.empty()) {
+    knownHostsPath_ = params.knownHostsPath;
+  }
+#endif
+  lastHostKeyFingerprint_ = fp;
+  if (hostKeyCallback_) {
+    return hostKeyCallback_(params.host, params.port, fp);
+  }
+  return true;
+}
+
 std::string SshClient::Connect(const ConnectParams& params) {
   std::lock_guard<std::mutex> lock(mu_);
   CleanupUnlocked();
@@ -120,6 +174,12 @@ std::string SshClient::Connect(const ConnectParams& params) {
     int len = 0;
     libssh2_session_last_error(sess, &msg, &len, 0);
     lastError_ = msg ? std::string(msg, len) : "SSH handshake failed";
+    CleanupUnlocked();
+    return lastError_;
+  }
+
+  if (!CheckHostKeyUnlocked(params, sess)) {
+    lastError_ = "host key rejected (fingerprint=" + lastHostKeyFingerprint_ + ")";
     CleanupUnlocked();
     return lastError_;
   }

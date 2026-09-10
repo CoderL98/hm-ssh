@@ -285,12 +285,22 @@ async fn admin_stats_requires_admin_and_lists_users() {
         .unwrap();
     let (status, body) = body_json(router.clone().oneshot(list).await.unwrap()).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert!(body.as_array().unwrap().iter().any(|u| u["username"] == "normalu"));
+    assert!(body.get("items").is_some(), "{body}");
+    assert!(body["total"].as_i64().unwrap() >= 1);
+    assert_eq!(body["page"], 1);
+    let items = body["items"].as_array().unwrap();
+    assert!(items.iter().any(|u| u["username"] == "normalu"));
+    let user_id = items
+        .iter()
+        .find(|u| u["username"] == "normalu")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
 
     // Sync meta strips payload
     let sync = Request::builder()
         .method("GET")
-        .uri(format!("/api/v1/admin/users/{}/sync", body[0]["id"].as_str().unwrap()))
+        .uri(format!("/api/v1/admin/users/{user_id}/sync"))
         .header("authorization", format!("Bearer {admin_token}"))
         .body(Body::empty())
         .unwrap();
@@ -467,4 +477,87 @@ async fn health_reports_db() {
     assert_eq!(body["status"], "ok");
     assert_eq!(body["db"], "ok");
     assert!(body.get("db_backend").is_some());
+}
+
+#[tokio::test]
+async fn self_delete_account_revokes_and_hides_from_auth() {
+    let state = test_state(100).await;
+    let pool = state.pool.clone();
+    let router = app(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/register")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"email":"del@test.com","username":"deluser","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, auth) = body_json(router.clone().oneshot(req).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{auth}");
+    let token = auth["access_token"].as_str().unwrap().to_string();
+    let user_id = auth["user"]["id"].as_str().unwrap().to_string();
+
+    // Put hosts so we can assert wipe
+    let put = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/sync/hosts")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(r#"{"data":[{"id":"h1","name":"n","host":"1.1.1.1","port":22,"username":"u","password":"","privateKey":"","createdAt":1,"updatedAt":1}]}"#))
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(put).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let bad = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/me")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(r#"{"password":"wrongpass"}"#))
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(bad).await.unwrap()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let ok = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/me")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(r#"{"password":"secret123"}"#))
+        .unwrap();
+    let (status, body) = body_json(router.clone().oneshot(ok).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["ok"], true);
+
+    // Token no longer works
+    let me = Request::builder()
+        .method("GET")
+        .uri("/api/v1/me")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(me).await.unwrap()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Login rejected
+    let login = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"login":"del@test.com","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(login).await.unwrap()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Blobs wiped
+    let hosts = db::get_hosts(&pool, &user_id).await.expect("hosts");
+    assert!(hosts.is_none());
+
+    // Admin list includes deleted user when queried by id/email
+    // (seed no admin here — just verify row still exists with deleted_at)
+    let user = db::find_user_by_id(&pool, &user_id).await.expect("find").expect("row");
+    assert!(user.deleted_at.is_some());
 }

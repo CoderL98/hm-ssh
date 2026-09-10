@@ -323,26 +323,91 @@ pub async fn touch_last_login(pool: &DbPool, user_id: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn list_users(pool: &DbPool, q: Option<&str>) -> AppResult<Vec<UserRow>> {
-    let sql = if let Some(q) = q.filter(|s| !s.trim().is_empty()) {
-        let pattern = format!("%{}%", q.trim());
-        let query = format!(
-            "SELECT {USER_COLS} FROM users WHERE deleted_at IS NULL AND (email LIKE ? OR username LIKE ? OR id LIKE ?) ORDER BY created_at DESC LIMIT 200"
-        );
-        let rows = sqlx::query(&query)
-            .bind(&pattern)
-            .bind(&pattern)
-            .bind(&pattern)
-            .fetch_all(pool)
+#[derive(Debug, Clone)]
+pub struct UserPage {
+    pub items: Vec<UserRow>,
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+}
+
+/// Admin user list with true pagination. Includes soft-deleted users so admins can see self-deletes.
+pub async fn list_users_page(
+    pool: &DbPool,
+    q: Option<&str>,
+    page: u32,
+    page_size: u32,
+) -> AppResult<UserPage> {
+    let page = page.max(1);
+    let page_size = page_size.clamp(1, 100);
+    let offset = ((page - 1) as i64) * (page_size as i64);
+    let pattern = q
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| format!("%{}%", s.trim()));
+
+    let total: i64 = if let Some(ref pattern) = pattern {
+        let sql = "SELECT COUNT(*) AS c FROM users WHERE (email LIKE ? OR username LIKE ? OR id LIKE ?)";
+        let row = sqlx::query(sql)
+            .bind(pattern)
+            .bind(pattern)
+            .bind(pattern)
+            .fetch_one(pool)
             .await?;
-        return Ok(rows.into_iter().map(map_user).collect());
+        row.get::<i64, _>("c")
     } else {
-        format!(
-            "SELECT {USER_COLS} FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 200"
-        )
+        let row = sqlx::query("SELECT COUNT(*) AS c FROM users")
+            .fetch_one(pool)
+            .await?;
+        row.get::<i64, _>("c")
     };
-    let rows = sqlx::query(&sql).fetch_all(pool).await?;
-    Ok(rows.into_iter().map(map_user).collect())
+
+    let rows = if let Some(ref pattern) = pattern {
+        let sql = format!(
+            "SELECT {USER_COLS} FROM users WHERE (email LIKE ? OR username LIKE ? OR id LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        );
+        sqlx::query(&sql)
+            .bind(pattern)
+            .bind(pattern)
+            .bind(pattern)
+            .bind(page_size as i64)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?
+    } else {
+        let sql = format!(
+            "SELECT {USER_COLS} FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        );
+        sqlx::query(&sql)
+            .bind(page_size as i64)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?
+    };
+
+    Ok(UserPage {
+        items: rows.into_iter().map(map_user).collect(),
+        total,
+        page,
+        page_size,
+    })
+}
+
+/// Backward-compatible helper used by older call sites / tests.
+pub async fn list_users(pool: &DbPool, q: Option<&str>) -> AppResult<Vec<UserRow>> {
+    let page = list_users_page(pool, q, 1, 200).await?;
+    Ok(page.items)
+}
+
+pub async fn delete_user_sync_blobs(pool: &DbPool, user_id: &str) -> AppResult<()> {
+    sqlx::query("DELETE FROM user_hosts WHERE user_id = ?")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM user_settings WHERE user_id = ?")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn count_users(pool: &DbPool) -> AppResult<i64> {

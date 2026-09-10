@@ -110,6 +110,13 @@ std::string FtpClient::Connect(const ConnectParams& params) {
     CloseSock(ctrlSock_);
     return "FTP greeting failed: " + text;
   }
+  tlsRequested_ = params.useTls;
+  if (params.useTls) {
+    // Explicit FTPS (AUTH TLS) hook — requires OpenSSL/mbedTLS on control socket.
+    // TODO(DevEco): AUTH TLS + PBSZ 0 + PROT P after linking TLS.
+    CloseSock(ctrlSock_);
+    return "FTPS/TLS requested but OpenSSL not linked (TODO: AUTH TLS); unset useTls or enable TLS in native build";
+  }
   if (!SendCmd("USER " + params.username, code, text)) {
     CloseSock(ctrlSock_);
     return "USER failed";

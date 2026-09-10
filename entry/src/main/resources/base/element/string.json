@@ -495,6 +495,38 @@
     {
       "name": "host_list_last_sync_prefix",
       "value": "上次同步："
+    },
+    {
+      "name": "account_delete",
+      "value": "删除帐号"
+    },
+    {
+      "name": "account_delete_hint",
+      "value": "不可恢复：云端主机/设置将被清除，会话吊销。请输入当前密码确认。"
+    },
+    {
+      "name": "account_delete_password",
+      "value": "确认密码"
+    },
+    {
+      "name": "account_delete_btn",
+      "value": "确认删除帐号"
+    },
+    {
+      "name": "account_conflict_keep_local",
+      "value": "保留本地"
+    },
+    {
+      "name": "account_conflict_use_cloud",
+      "value": "使用云端"
+    },
+    {
+      "name": "host_list_offline",
+      "value": "离线"
+    },
+    {
+      "name": "host_list_sync_failed",
+      "value": "同步失败"
     }
   ]
 }

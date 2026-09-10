@@ -16,6 +16,13 @@ English + 中文说明如下。
 | `GET/PUT /api/v1/sync/hosts` | 主机列表 JSON 同步（服务端剥离 password/privateKey） |
 | `GET/PUT /api/v1/sync/settings` | 主题/设置 JSON 同步 |
 | `GET /health` | 健康检查 |
+| `GET /api/v1/admin/stats` | 管理统计（需 admin） |
+| `GET /api/v1/admin/users?q=` | 用户列表 / 搜索 |
+| `GET /api/v1/admin/users/:id` | 用户详情 |
+| `PATCH /api/v1/admin/users/:id` | `{ disabled? }` 启用/禁用 |
+| `DELETE /api/v1/admin/users/:id` | 软删除 |
+| `POST /api/v1/admin/users/:id/revoke` | 强制注销会话 |
+| `GET /api/v1/admin/users/:id/sync` | 同步元数据（无密钥原文） |
 
 密码 **Argon2** 哈希，从不存明文。JWT 密钥来自 `JWT_SECRET`。
 
@@ -74,6 +81,7 @@ docker run --rm -p 8080:8080 \
 - `REDIS_URL` — 可选
 - `CORS_ORIGINS` — `*` 或逗号分隔源
 - `AUTH_RATE_LIMIT_PER_MIN` — 注册/登录每 IP 每分钟上限（默认 20）
+- `ADMIN_EMAIL` / `ADMIN_PASSWORD` — 启动时种子首位管理员（缺失则跳过；密码 ≥8）
 
 ## Sync semantics / 同步语义
 
@@ -110,6 +118,21 @@ curl -s -X PUT localhost:8080/api/v1/sync/hosts \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"data":[{"id":"h1","name":"demo","host":"1.2.3.4","port":22}]}'
 ```
+
+
+## Admin API / 管理端
+
+需 **管理员** JWT（`users.is_admin = 1`）。中间件校验 JWT 后再次读取数据库 flag。
+
+启动种子：
+
+```bash
+export ADMIN_EMAIL=admin@example.com
+export ADMIN_PASSWORD=change-me-admin-pass
+cargo run
+```
+
+管理 UI 见仓库 [`admin/`](../admin/)（SvelteKit + shadcn-svelte）。
 
 ## Dev notes
 

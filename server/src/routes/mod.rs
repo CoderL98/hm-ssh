@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod auth;
 pub mod health;
 pub mod me;
@@ -56,6 +57,22 @@ pub fn router(state: AppState) -> axum::Router {
         .route(
             "/api/v1/sync/settings",
             get(sync::get_settings).put(sync::put_settings),
+        )
+        .route("/api/v1/admin/stats", get(admin::stats))
+        .route("/api/v1/admin/users", get(admin::list_users))
+        .route(
+            "/api/v1/admin/users/{id}",
+            get(admin::get_user)
+                .patch(admin::patch_user)
+                .delete(admin::delete_user),
+        )
+        .route(
+            "/api/v1/admin/users/{id}/revoke",
+            post(admin::revoke_user),
+        )
+        .route(
+            "/api/v1/admin/users/{id}/sync",
+            get(admin::user_sync_meta),
         )
         .with_state(state)
 }

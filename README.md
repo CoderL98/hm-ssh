@@ -49,8 +49,12 @@ hm-ssh/
 ├── native/                    # NAPI C++ 协议后端源码 + 中文 README
 │   └── hmssh_native/          # SSH(libssh2)/FTP/VNC + types
 ├── server/                    # Rust 云端（axum + sqlx + JWT + Argon2）
-│   ├── src/                   # auth / db / cache / routes
+│   ├── src/                   # auth / db / cache / routes / admin
 │   ├── migrations/
+│   ├── .env.example
+│   └── README.md
+├── admin/                     # SvelteKit + shadcn-svelte 管理 UI
+│   ├── src/
 │   ├── .env.example
 │   └── README.md
 ├── build-profile.json5
@@ -157,11 +161,18 @@ hm-ssh/
 启动云端见 [`server/README.md`](./server/README.md)：
 
 ```bash
-cd server && cp .env.example .env   # 设置 JWT_SECRET
+cd server && cp .env.example .env   # 设置 JWT_SECRET；可选 ADMIN_EMAIL / ADMIN_PASSWORD
 cargo run                          # http://0.0.0.0:8080
 ```
 
-环境变量摘要：`DATABASE_URL`（`sqlite:` / `postgres://` / `mysql://`）、`JWT_SECRET`、可选 `REDIS_URL`、`BIND`、`CORS_ORIGINS`、`AUTH_RATE_LIMIT_PER_MIN`（默认 20）。
+管理控制台见 [`admin/README.md`](./admin/README.md)：
+
+```bash
+cd admin && cp .env.example .env   # PUBLIC_API_BASE
+pnpm install && pnpm dev           # http://localhost:5173
+```
+
+环境变量摘要：`DATABASE_URL`（`sqlite:` / `postgres://` / `mysql://`）、`JWT_SECRET`、可选 `REDIS_URL`、`BIND`、`CORS_ORIGINS`、`AUTH_RATE_LIMIT_PER_MIN`（默认 20）、`ADMIN_EMAIL` / `ADMIN_PASSWORD`（种子管理员）。
 
 ## Mock vs 真实（NAPI）
 

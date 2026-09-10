@@ -17,6 +17,9 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     /// Max register+login requests per IP per minute (default 20).
     pub auth_rate_limit_per_min: u32,
+    /// Optional seed admin credentials (created on startup if missing).
+    pub admin_email: Option<String>,
+    pub admin_password: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -29,6 +32,8 @@ struct TomlConfig {
     redis_url: Option<String>,
     cors_origins: Option<String>,
     auth_rate_limit_per_min: Option<u32>,
+    admin_email: Option<String>,
+    admin_password: Option<String>,
 }
 
 impl Config {
@@ -87,6 +92,15 @@ impl Config {
             .or(toml_cfg.auth_rate_limit_per_min)
             .unwrap_or(20);
 
+        let admin_email = env::var("ADMIN_EMAIL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .or(toml_cfg.admin_email.filter(|s| !s.trim().is_empty()));
+        let admin_password = env::var("ADMIN_PASSWORD")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or(toml_cfg.admin_password.filter(|s| !s.is_empty()));
+
         Ok(Config {
             bind,
             database_url,
@@ -96,6 +110,8 @@ impl Config {
             redis_url,
             cors_origins,
             auth_rate_limit_per_min,
+            admin_email,
+            admin_password,
         })
     }
 

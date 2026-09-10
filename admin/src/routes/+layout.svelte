@@ -1,0 +1,17 @@
+<script lang="ts">
+	import './layout.css';
+	import favicon from '$lib/assets/favicon.svg';
+	import { ModeWatcher } from 'mode-watcher';
+	import { Toaster } from '$lib/components/ui/sonner/index.js';
+
+	let { children } = $props();
+</script>
+
+<svelte:head>
+	<link rel="icon" href={favicon} />
+	<title>HmSSH Admin</title>
+</svelte:head>
+
+<ModeWatcher />
+<Toaster richColors position="top-right" />
+{@render children()}

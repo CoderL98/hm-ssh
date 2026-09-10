@@ -39,6 +39,8 @@ async fn test_state(rate_limit: u32) -> AppState {
         redis_url: None,
         cors_origins: vec!["*".into()],
         auth_rate_limit_per_min: rate_limit,
+        admin_email: None,
+        admin_password: None,
     };
     AppState {
         pool,
@@ -200,4 +202,98 @@ async fn refresh_rotates_and_revokes_old_jti() {
     // Soft check: at least one deny:jti key present is enough via replaying above.
     let _ = cache;
     let _ = jti_deny_key;
+}
+
+#[tokio::test]
+async fn admin_stats_requires_admin_and_lists_users() {
+    let state = test_state(100).await;
+    let pool = state.pool.clone();
+    let router = app(state);
+
+    // Seed admin directly
+    let admin = db::seed_admin_if_needed(&pool, "admin@test.com", "adminpass1")
+        .await
+        .expect("seed")
+        .expect("admin row");
+    assert!(admin.is_admin);
+
+    // Regular user
+    let reg = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/register")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"email":"u@test.com","username":"normalu","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(reg).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Non-admin token cannot hit admin
+    let login_u = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"login":"u@test.com","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, body) = body_json(router.clone().oneshot(login_u).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let user_token = body["access_token"].as_str().unwrap();
+
+    let denied = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/stats")
+        .header("authorization", format!("Bearer {user_token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(denied).await.unwrap()).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Admin login
+    let login_a = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"login":"admin@test.com","password":"adminpass1"}"#,
+        ))
+        .unwrap();
+    let (status, body) = body_json(router.clone().oneshot(login_a).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["user"]["is_admin"], true);
+    let admin_token = body["access_token"].as_str().unwrap();
+
+    let stats = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/stats")
+        .header("authorization", format!("Bearer {admin_token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = body_json(router.clone().oneshot(stats).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["user_count"].as_i64().unwrap() >= 2);
+
+    let list = Request::builder()
+        .method("GET")
+        .uri("/api/v1/admin/users?q=normalu")
+        .header("authorization", format!("Bearer {admin_token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = body_json(router.clone().oneshot(list).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.as_array().unwrap().iter().any(|u| u["username"] == "normalu"));
+
+    // Sync meta strips payload
+    let sync = Request::builder()
+        .method("GET")
+        .uri(format!("/api/v1/admin/users/{}/sync", body[0]["id"].as_str().unwrap()))
+        .header("authorization", format!("Bearer {admin_token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = body_json(router.oneshot(sync).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.get("hosts").is_some());
+    assert!(body["hosts"].get("payload").is_none());
 }

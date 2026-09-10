@@ -50,6 +50,8 @@ pub struct UserPublic {
     pub email: String,
     pub username: String,
     pub created_at: i64,
+    #[serde(default)]
+    pub is_admin: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -120,6 +122,14 @@ pub async fn login(
         return Err(AppError::Unauthorized("invalid credentials".into()));
     }
 
+    if user.deleted_at.is_some() {
+        return Err(AppError::Unauthorized("account deleted".into()));
+    }
+    if user.disabled {
+        return Err(AppError::Unauthorized("account disabled".into()));
+    }
+
+    let _ = db::touch_last_login(&state.pool, &user.id).await;
     issue_tokens(&state, &user).await
 }
 
@@ -146,6 +156,9 @@ pub async fn refresh(
     let user = db::find_user_by_id(&state.pool, &claims.sub)
         .await?
         .ok_or_else(|| AppError::Unauthorized("user not found".into()))?;
+    if user.deleted_at.is_some() || user.disabled {
+        return Err(AppError::Unauthorized("account disabled".into()));
+    }
 
     // Revoke the presented refresh jti before issuing a new pair
     let remaining = (claims.exp - chrono::Utc::now().timestamp()).max(1) as u64;
@@ -181,19 +194,25 @@ pub async fn logout(
 }
 
 async fn issue_tokens(state: &AppState, user: &db::UserRow) -> AppResult<Json<AuthResponse>> {
-    let (access_token, expires_at) =
-        state
-            .jwt
-            .issue_access(&user.id, &user.email, &user.username)?;
-    let (refresh_token, _) = state
-        .jwt
-        .issue_refresh(&user.id, &user.email, &user.username)?;
+    let (access_token, expires_at) = state.jwt.issue_access(
+        &user.id,
+        &user.email,
+        &user.username,
+        user.is_admin,
+    )?;
+    let (refresh_token, _) = state.jwt.issue_refresh(
+        &user.id,
+        &user.email,
+        &user.username,
+        user.is_admin,
+    )?;
 
     let public = UserPublic {
         id: user.id.clone(),
         email: user.email.clone(),
         username: user.username.clone(),
         created_at: user.created_at,
+        is_admin: user.is_admin,
     };
 
     // Clear user-level revoke marker so new tokens work after re-login

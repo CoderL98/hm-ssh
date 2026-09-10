@@ -28,6 +28,7 @@ pub async fn me(
         email: user.email.clone(),
         username: user.username.clone(),
         created_at: user.created_at,
+        is_admin: user.is_admin,
     };
     if let Ok(s) = serde_json::to_string(&public) {
         state

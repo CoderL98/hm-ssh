@@ -13,6 +13,9 @@ pub struct Claims {
     pub username: String,
     /// "access" | "refresh"
     pub typ: String,
+    /// Admin flag embedded at issue time; middleware also re-checks DB.
+    #[serde(default)]
+    pub is_admin: bool,
     pub exp: i64,
     pub iat: i64,
     pub jti: String,
@@ -40,8 +43,16 @@ impl JwtKeys {
         user_id: &str,
         email: &str,
         username: &str,
+        is_admin: bool,
     ) -> AppResult<(String, i64)> {
-        self.issue(user_id, email, username, "access", self.access_ttl_secs)
+        self.issue(
+            user_id,
+            email,
+            username,
+            is_admin,
+            "access",
+            self.access_ttl_secs,
+        )
     }
 
     pub fn issue_refresh(
@@ -49,8 +60,16 @@ impl JwtKeys {
         user_id: &str,
         email: &str,
         username: &str,
+        is_admin: bool,
     ) -> AppResult<(String, i64)> {
-        self.issue(user_id, email, username, "refresh", self.refresh_ttl_secs)
+        self.issue(
+            user_id,
+            email,
+            username,
+            is_admin,
+            "refresh",
+            self.refresh_ttl_secs,
+        )
     }
 
     fn issue(
@@ -58,6 +77,7 @@ impl JwtKeys {
         user_id: &str,
         email: &str,
         username: &str,
+        is_admin: bool,
         typ: &str,
         ttl: i64,
     ) -> AppResult<(String, i64)> {
@@ -68,6 +88,7 @@ impl JwtKeys {
             email: email.to_string(),
             username: username.to_string(),
             typ: typ.to_string(),
+            is_admin,
             exp,
             iat: now.timestamp(),
             jti: Uuid::new_v4().to_string(),

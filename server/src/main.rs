@@ -36,6 +36,14 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+    if let (Some(email), Some(password)) = (&config.admin_email, &config.admin_password) {
+        db::seed_admin_if_needed(&pool, email, password)
+            .await
+            .map_err(|e| anyhow::anyhow!("seed admin: {e}"))?;
+    } else {
+        tracing::info!("ADMIN_EMAIL/ADMIN_PASSWORD not set; skip admin seed");
+    }
+
     let jwt = Arc::new(JwtKeys::new(
         &config.jwt_secret,
         config.jwt_access_ttl_secs,

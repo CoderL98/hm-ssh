@@ -13,33 +13,51 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { toast } from 'svelte-sonner';
 
 	let users = $state<AdminUser[]>([]);
 	let q = $state('');
 	let loading = $state(true);
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let requestSeq = 0;
 
-	async function load() {
+	async function load(search = q) {
+		const seq = ++requestSeq;
 		loading = true;
 		try {
-			users = await fetchUsers(q);
+			const list = await fetchUsers(search);
+			if (seq !== requestSeq) return; // stale
+			users = list;
 		} catch (e) {
+			if (seq !== requestSeq) return;
 			toast.error(e instanceof Error ? e.message : '加载失败');
 		} finally {
-			loading = false;
+			if (seq === requestSeq) loading = false;
 		}
 	}
 
 	onMount(load);
 
+	function scheduleSearch(value: string) {
+		q = value;
+		if (debounceTimer) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => {
+			void load(value);
+		}, 300);
+	}
+
 	async function onSearch(e: Event) {
 		e.preventDefault();
-		await load();
+		if (debounceTimer) clearTimeout(debounceTimer);
+		await load(q);
 	}
 
 	async function toggleDisabled(u: AdminUser) {
+		const next = !u.disabled;
+		if (next && !confirm(`确认禁用用户 ${u.email}？其会话将被吊销。`)) return;
 		try {
-			const updated = await patchUser(u.id, { disabled: !u.disabled });
+			const updated = await patchUser(u.id, { disabled: next });
 			users = users.map((x) => (x.id === u.id ? updated : x));
 			toast.success(updated.disabled ? '已禁用' : '已启用');
 		} catch (e) {
@@ -48,7 +66,7 @@
 	}
 
 	async function onDelete(u: AdminUser) {
-		if (!confirm(`确认软删除用户 ${u.email}？`)) return;
+		if (!confirm(`确认软删除用户 ${u.email}？此操作会禁用帐号并吊销会话。`)) return;
 		try {
 			await deleteUser(u.id);
 			users = users.filter((x) => x.id !== u.id);
@@ -62,13 +80,25 @@
 <div class="flex flex-col gap-4">
 	<div class="flex flex-col gap-1">
 		<h1 class="text-2xl font-semibold tracking-tight">用户</h1>
-		<p class="text-sm text-muted-foreground">搜索、禁用/启用与软删除</p>
+		<p class="text-sm text-muted-foreground">搜索（自动防抖）、禁用/启用与软删除</p>
 	</div>
 
 	<form class="flex flex-wrap items-center gap-2" onsubmit={onSearch}>
-		<Input class="max-w-sm" placeholder="搜索邮箱 / 用户名 / id" bind:value={q} />
+		<Input
+			class="max-w-sm"
+			placeholder="搜索邮箱 / 用户名 / id"
+			value={q}
+			oninput={(e) => scheduleSearch((e.currentTarget as HTMLInputElement).value)}
+		/>
 		<Button type="submit" variant="secondary">搜索</Button>
-		<Button type="button" variant="outline" onclick={() => { q = ''; load(); }}>重置</Button>
+		<Button
+			type="button"
+			variant="outline"
+			onclick={() => {
+				q = '';
+				load('');
+			}}>重置</Button
+		>
 	</form>
 
 	<Card.Root>
@@ -86,9 +116,13 @@
 				</Table.Header>
 				<Table.Body>
 					{#if loading}
-						<Table.Row>
-							<Table.Cell colspan={6} class="text-muted-foreground">加载中…</Table.Cell>
-						</Table.Row>
+						{#each Array.from({ length: 5 }) as _, i (i)}
+							<Table.Row>
+								<Table.Cell colspan={6}>
+									<Skeleton class="h-8 w-full" />
+								</Table.Cell>
+							</Table.Row>
+						{/each}
 					{:else if users.length === 0}
 						<Table.Row>
 							<Table.Cell colspan={6} class="text-muted-foreground">无用户</Table.Cell>

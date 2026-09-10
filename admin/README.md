@@ -56,3 +56,5 @@ cargo run
 - SvelteKit + TypeScript
 - Tailwind CSS v4 + shadcn-svelte（zinc 语义色、暗色模式）
 - Sonner 吐司；Sidebar / Card / Table / Badge / Button 等组合
+
+用户列表搜索 300ms 防抖；禁用/删除有确认；仪表盘展示 `/health` 细节。

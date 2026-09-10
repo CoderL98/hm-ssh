@@ -177,7 +177,7 @@ cargo run                          # http://0.0.0.0:8080
    - 真机：`http://<电脑局域网IP>:8080`  
    工程已允许 cleartext（`network_config.json`）；连不上时检查地址与防火墙。
 3. **注册 / 登录**：邮箱 + 用户名 + 密码（≥8）；登录可用邮箱或用户名。成功后自动 `syncAll`。
-4. **同步内容**：主机列表与主题/终端等设置；列表右上角可再进帐号页点「立即同步」或「退出登录」。
+4. **同步内容**：主机列表与主题/终端等设置；列表页显示上次同步时间，已登录可**下拉刷新**或点状态行同步；帐号页「立即同步」/「退出登录」/「修改密码」。
 5. **冷启动**：若本地已有会话，`EntryAbility` 会后台 `syncAll`，结果 toast 提示。
 6. **Mock**：帐号页切换「Mock（离线演示）」可无服务器联调 UI（切换会退出当前登录）。
 
@@ -211,9 +211,14 @@ pnpm install && pnpm dev           # http://localhost:5173
 - **HUKS** 加密 Token 与主机机密；HostStore 明文迁移；帐号页「云端密钥保险柜」
 - 服务端 `strip_host_secrets` 保留 `passwordEnc` / `privateKeyEnc`
 - Admin UI access-token **自动 refresh**（skew ~60s / 401 重试一次，失败回登录页）
-- AuthUser **短 TTL 缓存**（~45s，logout/revoke/disable/delete 时 invalidate）
+- AuthUser **短 TTL 缓存**（~45s，logout/revoke/disable/delete/改密 时 invalidate）
 - 保险柜口令 **HUKS 落盘**（「记住保险柜口令」默认 ON；logout / 关保险柜清除）
 - 连接路径 **新鲜工厂**（Index / Terminal / FTP / VNC）；`preferNative` 翻转时重建会话
+- **改密** `POST /api/v1/me/password` + 帐号页 UI（改密后换发新令牌并吊销旧会话）
+- 同步 **单飞 coalesce** + 本地变更推送 **防抖**；列表 **下拉同步** / 同步状态行；合并文案更清晰
+- 服务端：`DefaultBodyLimit`、hosts 条数上限、拒绝 null sync、`/health` 含 db/cache/uptime、SIGTERM 优雅退出、gzip/br 压缩
+- Admin：用户搜索 **300ms 防抖**、骨架屏、禁用/删除确认；仪表盘展示健康细节
+- 客户端：`windowSizeChange` 布局防抖；Index 会话延后到分栏连接再建
 
 ### 仍待 / 需 DevEco
 
@@ -223,7 +228,8 @@ pnpm install && pnpm dev           # http://localhost:5173
 - 图标；平板 / PC 多窗口与快捷键；终端 ANSI 彩色
 - 真机请将帐号页基址改为局域网 IP（出厂默认 10.0.2.2 面向模拟器）
 - 本环境未跑 DevEco/hvigor；分布式限流需 Redis
-- 用户自助改密 API（改密后需同样 invalidate AuthUser 缓存）
+- Admin 真正分页（当前服务端 LIMIT 200 + 搜索）；删除帐号自助（仅软删管理员侧）
+- 离线指示器细化（系统网络状态 API）；冲突三路合并 UI
 
 ## 许可
 

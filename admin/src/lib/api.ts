@@ -284,11 +284,20 @@ export async function fetchUserSync(id: string) {
 	return apiFetch<SyncMeta>(`/api/v1/admin/users/${encodeURIComponent(id)}/sync`);
 }
 
-export async function fetchHealth(): Promise<{ status?: string } | null> {
+export type HealthInfo = {
+	status?: string;
+	service?: string;
+	db?: string;
+	db_backend?: string;
+	cache?: string;
+	uptime_ms?: number;
+};
+
+export async function fetchHealth(): Promise<HealthInfo | null> {
 	try {
 		const res = await fetch(`${apiBase()}/health`);
 		if (!res.ok) return null;
-		return (await res.json()) as { status?: string };
+		return (await res.json()) as HealthInfo;
 	} catch {
 		return null;
 	}

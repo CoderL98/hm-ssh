@@ -40,8 +40,10 @@
 
 	async function toggleDisabled() {
 		if (!user) return;
+		const next = !user.disabled;
+		if (next && !confirm(`确认禁用用户 ${user.email}？其会话将被吊销。`)) return;
 		try {
-			user = await patchUser(user.id, { disabled: !user.disabled });
+			user = await patchUser(user.id, { disabled: next });
 			toast.success(user.disabled ? '已禁用' : '已启用');
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : '操作失败');

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchHealth, fetchStats, type AdminStats } from '$lib/api';
+	import { fetchHealth, fetchStats, type AdminStats, type HealthInfo } from '$lib/api';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { toast } from 'svelte-sonner';
 
 	let stats = $state<AdminStats | null>(null);
+	let health = $state<HealthInfo | null>(null);
 	let healthOk = $state<boolean | null>(null);
 	let loading = $state(true);
 
@@ -13,7 +15,8 @@
 		try {
 			const [s, h] = await Promise.all([fetchStats(), fetchHealth()]);
 			stats = s;
-			healthOk = !!h;
+			health = h;
+			healthOk = !!h && h.status === 'ok';
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : '加载失败');
 		} finally {
@@ -31,12 +34,16 @@
 		{#if healthOk === true}
 			<Badge variant="secondary">API 健康</Badge>
 		{:else if healthOk === false}
-			<Badge variant="destructive">API 不可达</Badge>
+			<Badge variant="destructive">API 异常 / 不可达</Badge>
 		{/if}
 	</div>
 
 	{#if loading}
-		<p class="text-sm text-muted-foreground">加载统计…</p>
+		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+			{#each Array.from({ length: 4 }) as _, i (i)}
+				<Skeleton class="h-28 w-full rounded-xl" />
+			{/each}
+		</div>
 	{:else if stats}
 		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			<Card.Root>
@@ -60,10 +67,18 @@
 			<Card.Root>
 				<Card.Header>
 					<Card.Description>服务状态</Card.Description>
-					<Card.Title class="flex items-center gap-2 text-xl">
+					<Card.Title class="flex flex-wrap items-center gap-2 text-xl">
 						{stats.health}
 						<Badge>{stats.db_backend}</Badge>
 					</Card.Title>
+					{#if health}
+						<Card.Description class="pt-2">
+							db={health.db ?? '—'} · cache={health.cache ?? '—'}
+							{#if health.uptime_ms != null}
+								· uptime {Math.round(health.uptime_ms / 1000)}s
+							{/if}
+						</Card.Description>
+					{/if}
 				</Card.Header>
 			</Card.Root>
 		</div>

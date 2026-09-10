@@ -20,6 +20,10 @@ pub struct Config {
     /// Optional seed admin credentials (created on startup if missing).
     pub admin_email: Option<String>,
     pub admin_password: Option<String>,
+    /// Max HTTP JSON body size in bytes (default 2 MiB).
+    pub max_body_bytes: usize,
+    /// Max hosts array length on sync PUT (default 500).
+    pub max_sync_hosts: usize,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -34,6 +38,8 @@ struct TomlConfig {
     auth_rate_limit_per_min: Option<u32>,
     admin_email: Option<String>,
     admin_password: Option<String>,
+    max_body_bytes: Option<usize>,
+    max_sync_hosts: Option<usize>,
 }
 
 impl Config {
@@ -101,6 +107,18 @@ impl Config {
             .filter(|s| !s.is_empty())
             .or(toml_cfg.admin_password.filter(|s| !s.is_empty()));
 
+        let max_body_bytes = env::var("MAX_BODY_BYTES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .or(toml_cfg.max_body_bytes)
+            .unwrap_or(2 * 1024 * 1024);
+
+        let max_sync_hosts = env::var("MAX_SYNC_HOSTS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .or(toml_cfg.max_sync_hosts)
+            .unwrap_or(500);
+
         Ok(Config {
             bind,
             database_url,
@@ -112,6 +130,8 @@ impl Config {
             auth_rate_limit_per_min,
             admin_email,
             admin_password,
+            max_body_bytes,
+            max_sync_hosts,
         })
     }
 

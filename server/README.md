@@ -13,9 +13,10 @@ English + 中文说明如下。
 | `POST /api/v1/auth/refresh` | 刷新 `{ refresh_token }` |
 | `POST /api/v1/auth/logout` | 注销（吊销会话缓存，需 Bearer） |
 | `GET /api/v1/me` | 当前用户（需 Bearer） |
+| `POST /api/v1/me/password` | 改密 `{ current_password, new_password }` → 新 JWT |
 | `GET/PUT /api/v1/sync/hosts` | 主机列表 JSON 同步（服务端剥离 password/privateKey） |
 | `GET/PUT /api/v1/sync/settings` | 主题/设置 JSON 同步 |
-| `GET /health` | 健康检查 |
+| `GET /health` | 健康检查（status/db/db_backend/cache/uptime_ms；db 失败 → 503） |
 | `GET /api/v1/admin/stats` | 管理统计（需 admin） |
 | `GET /api/v1/admin/users?q=` | 用户列表 / 搜索 |
 | `GET /api/v1/admin/users/:id` | 用户详情 |
@@ -82,6 +83,8 @@ docker run --rm -p 8080:8080 \
 - `CORS_ORIGINS` — `*` 或逗号分隔源
 - `AUTH_RATE_LIMIT_PER_MIN` — 注册/登录每 IP 每分钟上限（默认 20）
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — 启动时种子首位管理员（缺失则跳过；密码 ≥8）
+- `MAX_BODY_BYTES` — JSON body 上限（默认 2 MiB）
+- `MAX_SYNC_HOSTS` — `PUT /sync/hosts` 数组最大长度（默认 500）
 
 ## Sync semantics / 同步语义
 
@@ -148,3 +151,10 @@ Feature `redis-cache` 默认开启（引入 `redis` crate）；无 Redis 时不�
 
 Authenticated requests cache a short-TTL (`~45s`) `authuser:{id}` entry (`ok` / `disabled`) in the pluggable `CacheBackend` to avoid a DB hit on every request. Entries are invalidated on logout, admin revoke/disable/delete, and disabled lookups are also written so repeated rejects stay cheap. Prefer invalidate-on-write over long TTLs.
 
+## Ops notes / 运维要点
+
+- **Body limit**：axum `DefaultBodyLimit`（`MAX_BODY_BYTES`）；同步另限 hosts 条数与 payload 字节。
+- **Compression**：响应可协商 gzip / br（`tower-http` CompressionLayer）。
+- **Graceful shutdown**：Ctrl+C 与 Unix `SIGTERM`。
+- **sqlx pool**：`max_connections=10`、`min_connections=1`、acquire 超时 8s；PG/MySQL 高并发时可按实例调高。
+- **AuthUser cache**：短 TTL；logout / disable / delete / revoke / **改密** 均 invalidate。

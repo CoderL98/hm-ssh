@@ -11,3 +11,6 @@ cors_origins = "*"
 # auth_rate_limit_per_min = 20
 # admin_email = "admin@example.com"
 # admin_password = "change-me-admin-pass"
+
+# max_body_bytes = 2097152
+# max_sync_hosts = 500

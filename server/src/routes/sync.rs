@@ -96,11 +96,23 @@ async fn put_sync(
 ) -> AppResult<Json<SyncPutResponse>> {
     let _ = body.client_updated_at;
     let mut data = body.data;
+    if data.is_null() {
+        return Err(AppError::BadRequest(
+            "sync data must not be null; use [] for hosts or {} for settings".into(),
+        ));
+    }
     if hosts {
         if !data.is_array() {
             return Err(AppError::BadRequest(
                 "hosts data must be a JSON array".into(),
             ));
+        }
+        let len = data.as_array().map(|a| a.len()).unwrap_or(0);
+        if len > state.config.max_sync_hosts {
+            return Err(AppError::BadRequest(format!(
+                "hosts list too large (max {})",
+                state.config.max_sync_hosts
+            )));
         }
         // Defense in depth: never persist plaintext secrets server-side
         data = strip_host_secrets(data);
@@ -111,6 +123,13 @@ async fn put_sync(
     }
     let payload = serde_json::to_string(&data)
         .map_err(|e| AppError::BadRequest(format!("invalid json: {e}")))?;
+    // Cap persisted blob (~ max body); reject absurd payloads early
+    if payload.len() > state.config.max_body_bytes {
+        return Err(AppError::BadRequest(format!(
+            "sync payload too large (max {} bytes)",
+            state.config.max_body_bytes
+        )));
+    }
     let blob = if hosts {
         db::put_hosts(&state.pool, user_id, &payload).await?
     } else {

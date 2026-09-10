@@ -41,6 +41,8 @@ async fn test_state(rate_limit: u32) -> AppState {
         auth_rate_limit_per_min: rate_limit,
         admin_email: None,
         admin_password: None,
+        max_body_bytes: 2 * 1024 * 1024,
+        max_sync_hosts: 500,
     };
     AppState {
         pool,
@@ -350,4 +352,119 @@ async fn disabled_user_cannot_login_or_use_token() {
         .unwrap();
     let (status, body) = body_json(router.oneshot(me).await.unwrap()).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+}
+
+#[tokio::test]
+async fn change_password_issues_new_tokens() {
+    let state = test_state(100).await;
+    let router = app(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/register")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"email":"pw@b.com","username":"pwuser","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, auth) = body_json(router.clone().oneshot(req).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{auth}");
+    let token = auth["access_token"].as_str().unwrap();
+
+    let bad = Request::builder()
+        .method("POST")
+        .uri("/api/v1/me/password")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            r#"{"current_password":"wrongpass","new_password":"secret999"}"#,
+        ))
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(bad).await.unwrap()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let ok = Request::builder()
+        .method("POST")
+        .uri("/api/v1/me/password")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            r#"{"current_password":"secret123","new_password":"secret999"}"#,
+        ))
+        .unwrap();
+    let (status, auth2) = body_json(router.clone().oneshot(ok).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{auth2}");
+    assert!(auth2["access_token"].as_str().unwrap().len() > 10);
+
+    // Login with new password
+    let login = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"login":"pw@b.com","password":"secret999"}"#,
+        ))
+        .unwrap();
+    let (status, _) = body_json(router.clone().oneshot(login).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Old password rejected
+    let login_old = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"login":"pw@b.com","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, _) = body_json(router.oneshot(login_old).await.unwrap()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn sync_rejects_null_data() {
+    let state = test_state(100).await;
+    let router = app(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/register")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"email":"n@b.com","username":"nulluser","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, auth) = body_json(router.clone().oneshot(req).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{auth}");
+    let token = auth["access_token"].as_str().unwrap();
+
+    let put = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/sync/hosts")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(r#"{"data":null}"#))
+        .unwrap();
+    let (status, body) = body_json(router.oneshot(put).await.unwrap()).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["error"].as_str().unwrap_or("").contains("null"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn health_reports_db() {
+    let state = test_state(100).await;
+    let router = app(state);
+    let req = Request::builder()
+        .method("GET")
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = body_json(router.oneshot(req).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "ok");
+    assert_eq!(body["db"], "ok");
+    assert!(body.get("db_backend").is_some());
 }

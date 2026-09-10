@@ -33,8 +33,12 @@ pub async fn connect(database_url: &str) -> AppResult<DbPool> {
     sqlx::any::install_default_drivers();
 
     let url = normalize_sqlite_url(database_url);
+    // sqlx pool: keep a small warm set; raise max_connections behind a real PG/MySQL
+    // deployment if admin/list + sync traffic grows. SQLite benefits little from >~5 writers.
     let pool = AnyPoolOptions::new()
         .max_connections(10)
+        .min_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(8))
         .connect(&url)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("connect db: {e}")))?;
@@ -294,6 +298,17 @@ pub async fn soft_delete_user(pool: &DbPool, user_id: &str) -> AppResult<()> {
     .bind(user_id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+pub async fn update_password_hash(pool: &DbPool, user_id: &str, password_hash: &str) -> AppResult<()> {
+    let now = chrono::Utc::now().timestamp_millis();
+    sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+        .bind(password_hash)
+        .bind(now)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

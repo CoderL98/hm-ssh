@@ -194,6 +194,10 @@ pub async fn logout(
     Ok(Json(LogoutResponse { ok: true }))
 }
 
+pub async fn issue_tokens_for(state: &AppState, user: &db::UserRow) -> AppResult<Json<AuthResponse>> {
+    issue_tokens(state, user).await
+}
+
 async fn issue_tokens(state: &AppState, user: &db::UserRow) -> AppResult<Json<AuthResponse>> {
     let (access_token, expires_at) = state.jwt.issue_access(
         &user.id,

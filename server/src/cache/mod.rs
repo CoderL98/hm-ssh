@@ -143,3 +143,11 @@ pub fn jti_deny_key(jti: &str) -> String {
     format!("deny:jti:{jti}")
 }
 
+
+/// Short-TTL AuthUser DB-hit cache (active user existence / disabled flag).
+pub fn auth_user_key(user_id: &str) -> String {
+    format!("authuser:{user_id}")
+}
+
+/// Default TTL for positive AuthUser lookups (invalidate-on-write preferred).
+pub const AUTH_USER_CACHE_TTL_SECS: u64 = 45;

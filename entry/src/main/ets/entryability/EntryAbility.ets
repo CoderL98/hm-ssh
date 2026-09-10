@@ -54,12 +54,14 @@ export default class EntryAbility extends UIAbility {
   }
 
   private async bootstrapStores(): Promise<void> {
-    await Promise.all([
-      AppSettings.getInstance().init(this.context),
-      HuksCrypto.getInstance().init().catch((e: Error) => {
-        hilog.error(DOMAIN, TAG, 'HUKS init failed %{public}s', e.message ?? `${e}`);
-      })
-    ]);
+    // HUKS 须先于 AppSettings：保险柜口令密文解密依赖本地 AES 密钥
+    try {
+      await HuksCrypto.getInstance().init();
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(`${e}`);
+      hilog.error(DOMAIN, TAG, 'HUKS init failed %{public}s', err.message ?? `${err}`);
+    }
+    await AppSettings.getInstance().init(this.context);
     await Promise.all([
       ThemeStore.getInstance().init(this.context),
       AuthStore.getInstance().init(this.context),

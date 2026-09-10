@@ -143,3 +143,8 @@ cargo run
 ```
 
 Feature `redis-cache` 默认开启（引入 `redis` crate）；无 Redis 时不设 `REDIS_URL` 即可。
+
+## AuthUser lookup cache
+
+Authenticated requests cache a short-TTL (`~45s`) `authuser:{id}` entry (`ok` / `disabled`) in the pluggable `CacheBackend` to avoid a DB hit on every request. Entries are invalidated on logout, admin revoke/disable/delete, and disabled lookups are also written so repeated rejects stay cheap. Prefer invalidate-on-write over long TTLs.
+

@@ -14,6 +14,7 @@ import { RouteNames } from '../common/Constants';
 import { maybePushAfterLocalChange } from '../services/CloudSyncService';
 import { AuthStore } from '../services/AuthService';
 import { ThemeTokens } from '../theme/ThemeTokens';
+import { AppSettings } from '../services/AppSettings';
 
 /**
  * 主页：窄屏栈式导航；宽屏主从分栏。
@@ -32,6 +33,7 @@ struct Index {
   @StorageLink('themeRev') themeRev: number = 0;
   @StorageLink('hostRev') @Watch('onHostRev') hostRev: number = 0;
   @StorageLink('authRev') @Watch('onAuthRev') authRev: number = 0;
+  @StorageLink('appSettingsRev') @Watch('onAppSettingsRev') appSettingsRev: number = 0;
   @StorageLink('syncToastMsg') @Watch('onSyncToastMsg') syncToastMsg: string = '';
   @State authLoggedIn: boolean = false;
   @State authLabel: string = '';
@@ -60,6 +62,7 @@ struct Index {
   private sshSession: ISshSession = SshSessionFactory.create();
   private ftpSession: IFtpSession = FtpSessionFactory.create();
   private vncSession: IVncSession = VncSessionFactory.create();
+  private lastPreferNative: boolean = false;
   private windowClass: window.Window | undefined = undefined;
   private sizeSnapshot: WindowSizeState = new WindowSizeState();
 
@@ -67,16 +70,9 @@ struct Index {
     this.refreshAuth();
     this.reloadHosts();
     this.consumeSyncToast();
-    this.sshSession.onOutput((_chunk: string) => {
-      this.terminalOutput = this.sshSession.getOutput();
-      this.terminalConnected = this.sshSession.isConnected();
-    });
-    this.ftpSession.onStatus((msg: string) => {
-      this.ftpStatus = msg;
-    });
-    this.vncSession.onStatus((msg: string) => {
-      this.vncStatus = msg;
-    });
+    // AppSettings 就绪后再按工厂重建，避免 field-init 永久冻在 Mock
+    this.lastPreferNative = AppSettings.getInstance().preferNative();
+    this.recreateSessions();
     this.initWindowListener();
   }
 
@@ -102,6 +98,43 @@ struct Index {
 
   onAuthRev(): void {
     this.refreshAuth();
+  }
+
+  onAppSettingsRev(): void {
+    void this.appSettingsRev;
+    const prefer = AppSettings.getInstance().preferNative();
+    if (prefer === this.lastPreferNative) {
+      return;
+    }
+    this.lastPreferNative = prefer;
+    // 原生开关翻转：重建会话；若分栏已选中主机则重连
+    const selected = this.selectedId;
+    void this.disconnectAll().then(() => {
+      this.recreateSessions();
+      if (this.useSplit && selected) {
+        const host = HostStore.getInstance().getById(selected);
+        if (host) {
+          void this.openInSplit(host);
+        }
+      }
+    });
+  }
+
+  /** 按当前 AppSettings / .so 可用性新鲜构造 Native* 或 Mock */
+  private recreateSessions(): void {
+    this.sshSession = SshSessionFactory.create();
+    this.ftpSession = FtpSessionFactory.create();
+    this.vncSession = VncSessionFactory.create();
+    this.sshSession.onOutput((_chunk: string) => {
+      this.terminalOutput = this.sshSession.getOutput();
+      this.terminalConnected = this.sshSession.isConnected();
+    });
+    this.ftpSession.onStatus((msg: string) => {
+      this.ftpStatus = msg;
+    });
+    this.vncSession.onStatus((msg: string) => {
+      this.vncStatus = msg;
+    });
   }
 
   private refreshAuth(): void {
@@ -265,6 +298,14 @@ struct Index {
   }
 
   private connectHost(host: HostConfig): void {
+    if (!AppSettings.getInstance().isReady()) {
+      try {
+        promptAction.showToast({ message: '设置加载中，请稍后再连接', duration: 2000 });
+      } catch (_e) {
+        // ignore
+      }
+      return;
+    }
     this.selectedId = host.id;
     this.selectedProtocol = host.protocol;
     if (this.useSplit) {
@@ -291,20 +332,8 @@ struct Index {
 
   private async openInSplit(host: HostConfig): Promise<void> {
     await this.disconnectAll();
-    // 每次按工厂重建，以响应「使用原生协议」开关
-    this.sshSession = SshSessionFactory.create();
-    this.ftpSession = FtpSessionFactory.create();
-    this.vncSession = VncSessionFactory.create();
-    this.sshSession.onOutput((_chunk: string) => {
-      this.terminalOutput = this.sshSession.getOutput();
-      this.terminalConnected = this.sshSession.isConnected();
-    });
-    this.ftpSession.onStatus((msg: string) => {
-      this.ftpStatus = msg;
-    });
-    this.vncSession.onStatus((msg: string) => {
-      this.vncStatus = msg;
-    });
+    // 每次按工厂重建，以响应「使用原生协议」开关与 .so 可用性
+    this.recreateSessions();
     this.terminalConnected = false;
     this.ftpConnected = false;
     this.vncConnected = false;

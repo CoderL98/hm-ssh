@@ -176,8 +176,9 @@ export class HostStore {
       if (settings.isCloudVaultEnabled()) {
         const pass = settings.getVaultPassphrase();
         if (pass && pass.length >= 8) {
-          h.passwordEnc = h.password ? await crypto.encryptForCloudVault(h.password, pass) : '';
-          h.privateKeyEnc = h.privateKey ? await crypto.encryptForCloudVault(h.privateKey, pass) : '';
+          const salt = await settings.ensureVaultSalt();
+          h.passwordEnc = h.password ? await crypto.encryptForCloudVault(h.password, pass, salt) : '';
+          h.privateKeyEnc = h.privateKey ? await crypto.encryptForCloudVault(h.privateKey, pass, salt) : '';
         }
       }
     } catch (e) {

@@ -394,7 +394,15 @@
     },
     {
       "name": "account_vault_passphrase_hint",
-      "value": "至少 8 位；仅保存在内存，用于加解密云端密文。"
+      "value": "至少 8 位；用于加解密云端 passwordEnc。默认可经 HUKS 加密后记住，重启无需重输。"
+    },
+    {
+      "name": "account_remember_vault_passphrase",
+      "value": "记住保险柜口令"
+    },
+    {
+      "name": "account_remember_vault_hint",
+      "value": "默认开启：口令经 HUKS 加密写入本机 preferences；退出登录或关闭保险柜时清除。关闭则仅保存在内存。"
     },
     {
       "name": "native_missing_toast",

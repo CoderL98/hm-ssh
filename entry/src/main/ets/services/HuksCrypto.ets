@@ -10,7 +10,6 @@
 import { huks } from '@kit.UniversalKeystoreKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { util } from '@kit.ArkTS';
-import { AppSettings } from './AppSettings';
 
 const LOCAL_KEY_ALIAS = 'hmssh_local_aes256';
 const AAD_UTF8 = 'hmssh-v1';
@@ -146,14 +145,16 @@ export class HuksCrypto {
   /**
    * 用用户口令派生密钥，加密明文，返回 pack 字符串（写入 passwordEnc / privateKeyEnc）。
    */
-  async encryptForCloudVault(plain: string, passphrase: string): Promise<string> {
+  async encryptForCloudVault(plain: string, passphrase: string, saltB64: string): Promise<string> {
     if (!plain) {
       return '';
     }
     if (!passphrase || passphrase.length < 8) {
       throw new Error('云端保险柜口令至少 8 位');
     }
-    const saltB64 = await AppSettings.getInstance().ensureVaultSalt();
+    if (!saltB64 || saltB64.length === 0) {
+      throw new Error('保险柜盐缺失');
+    }
     const key = await deriveAesKey(passphrase, saltB64);
     const iv = randomBytes(16);
     const cipher = await aesCbcEncrypt(key, iv, stringToUint8Array(plain));

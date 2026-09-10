@@ -1,14 +1,18 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
+import { HuksCrypto } from './HuksCrypto';
 
 const STORE_NAME = 'hm_ssh_app_settings';
 const KEY_USE_NATIVE = 'use_native_protocols';
 const KEY_CLOUD_VAULT = 'sync_encrypted_secrets';
 const KEY_VAULT_SALT = 'cloud_vault_salt_b64';
+const KEY_REMEMBER_VAULT = 'remember_vault_passphrase';
+const KEY_VAULT_PASSPHRASE_ENC = 'vault_passphrase_enc';
 const SETTINGS_REV = 'appSettingsRev';
 
 /**
  * 应用级开关：原生协议、云端密钥保险柜。
+ * 保险柜口令默认经 HUKS 加密后落盘（「记住保险柜口令」），以便重启后解开 passwordEnc。
  */
 export class AppSettings {
   private static instance: AppSettings | undefined = undefined;
@@ -18,8 +22,10 @@ export class AppSettings {
   private syncEncryptedSecrets: boolean = false;
   private vaultSaltB64: string = '';
   private revision: number = 0;
-  /** 内存中的保险柜口令（不上盘）；开启云端保险柜时由用户输入 */
+  /** 内存中的保险柜口令；可选 HUKS 加密后写入 preferences */
   private vaultPassphrase: string = '';
+  /** 记住口令（默认 ON；保险柜开启时生效） */
+  private rememberVaultPassphrase: boolean = true;
 
   static getInstance(): AppSettings {
     if (!AppSettings.instance) {
@@ -38,8 +44,29 @@ export class AppSettings {
     const vaultRaw = await this.pref.get(KEY_CLOUD_VAULT, '0') as string;
     this.syncEncryptedSecrets = vaultRaw === '1' || vaultRaw === 'true';
     this.vaultSaltB64 = await this.pref.get(KEY_VAULT_SALT, '') as string;
+    const rememberRaw = await this.pref.get(KEY_REMEMBER_VAULT, '1') as string;
+    this.rememberVaultPassphrase = rememberRaw !== '0' && rememberRaw !== 'false';
+
+    // 保险柜开启且「记住口令」时，从 HUKS 密文恢复内存口令
+    if (this.syncEncryptedSecrets && this.rememberVaultPassphrase) {
+      const packed = await this.pref.get(KEY_VAULT_PASSPHRASE_ENC, '') as string;
+      if (packed && packed.length > 0) {
+        try {
+          const crypto = HuksCrypto.getInstance();
+          await crypto.init();
+          this.vaultPassphrase = await crypto.decryptPackedOrPlain(packed);
+        } catch (_e) {
+          this.vaultPassphrase = packed.startsWith('v1:') ? '' : packed;
+        }
+      }
+    }
+
     this.ready = true;
     this.publish();
+  }
+
+  isReady(): boolean {
+    return this.ready;
   }
 
   preferNative(): boolean {
@@ -48,6 +75,10 @@ export class AppSettings {
 
   isCloudVaultEnabled(): boolean {
     return this.syncEncryptedSecrets;
+  }
+
+  isRememberVaultPassphrase(): boolean {
+    return this.rememberVaultPassphrase;
   }
 
   getVaultPassphrase(): string {
@@ -73,11 +104,51 @@ export class AppSettings {
       await this.pref.put(KEY_CLOUD_VAULT, value ? '1' : '0');
       await this.pref.flush();
     }
+    if (!value) {
+      // 关闭保险柜：清内存与落盘口令
+      await this.clearVaultPassphrase(true);
+    } else if (this.rememberVaultPassphrase && this.vaultPassphrase.length > 0) {
+      await this.persistVaultPassphraseEnc();
+    }
     this.publish();
   }
 
-  setVaultPassphrase(passphrase: string): void {
+  /**
+   * 更新内存口令；若开启「记住」且保险柜 ON，则 HUKS 加密后落盘。
+   */
+  async setVaultPassphrase(passphrase: string): Promise<void> {
     this.vaultPassphrase = passphrase;
+    if (this.syncEncryptedSecrets && this.rememberVaultPassphrase && passphrase.length > 0) {
+      await this.persistVaultPassphraseEnc();
+    } else if (!this.rememberVaultPassphrase || passphrase.length === 0) {
+      await this.clearPersistedVaultPassphraseOnly();
+    }
+    this.publish();
+  }
+
+  async setRememberVaultPassphrase(value: boolean): Promise<void> {
+    this.rememberVaultPassphrase = value;
+    if (this.pref) {
+      await this.pref.put(KEY_REMEMBER_VAULT, value ? '1' : '0');
+      await this.pref.flush();
+    }
+    if (value && this.syncEncryptedSecrets && this.vaultPassphrase.length > 0) {
+      await this.persistVaultPassphraseEnc();
+    } else if (!value) {
+      await this.clearPersistedVaultPassphraseOnly();
+    }
+    this.publish();
+  }
+
+  /**
+   * 退出登录或关闭保险柜时调用：清空内存口令，并删除落盘密文。
+   */
+  async clearVaultPassphrase(clearMemory: boolean = true): Promise<void> {
+    if (clearMemory) {
+      this.vaultPassphrase = '';
+    }
+    await this.clearPersistedVaultPassphraseOnly();
+    this.publish();
   }
 
   async ensureVaultSalt(): Promise<string> {
@@ -94,6 +165,30 @@ export class AppSettings {
       await this.pref.flush();
     }
     return this.vaultSaltB64;
+  }
+
+  private async persistVaultPassphraseEnc(): Promise<void> {
+    if (!this.pref || !this.vaultPassphrase) {
+      return;
+    }
+    let packed = this.vaultPassphrase;
+    try {
+      const crypto = HuksCrypto.getInstance();
+      await crypto.init();
+      packed = await crypto.encryptToPacked(this.vaultPassphrase);
+    } catch (_e) {
+      // HUKS 不可用时仍写入（与 Token 同样明文回退）；README 已说明权衡
+    }
+    await this.pref.put(KEY_VAULT_PASSPHRASE_ENC, packed);
+    await this.pref.flush();
+  }
+
+  private async clearPersistedVaultPassphraseOnly(): Promise<void> {
+    if (!this.pref) {
+      return;
+    }
+    await this.pref.put(KEY_VAULT_PASSPHRASE_ENC, '');
+    await this.pref.flush();
   }
 
   private publish(): void {

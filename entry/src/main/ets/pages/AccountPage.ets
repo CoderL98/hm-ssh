@@ -30,6 +30,7 @@ struct AccountPage {
   @State lastSyncLabel: string = '';
   @State cloudVault: boolean = false;
   @State vaultPassphrase: string = '';
+  @State rememberVault: boolean = true;
   @State huksStatus: string = '';
 
   aboutToAppear(): void {
@@ -42,8 +43,10 @@ struct AccountPage {
 
   onAppSettingsRev(): void {
     void this.appSettingsRev;
-    this.cloudVault = AppSettings.getInstance().isCloudVaultEnabled();
-    this.vaultPassphrase = AppSettings.getInstance().getVaultPassphrase();
+    const settings = AppSettings.getInstance();
+    this.cloudVault = settings.isCloudVaultEnabled();
+    this.vaultPassphrase = settings.getVaultPassphrase();
+    this.rememberVault = settings.isRememberVaultPassphrase();
   }
 
   /** AuthStore/AppSettings 就绪后（含冷启动竞态）刷新表单与会话展示 */
@@ -51,8 +54,10 @@ struct AccountPage {
     const store = AuthStore.getInstance();
     this.baseUrl = store.getBaseUrl();
     this.useMock = store.isUseMock();
-    this.cloudVault = AppSettings.getInstance().isCloudVaultEnabled();
-    this.vaultPassphrase = AppSettings.getInstance().getVaultPassphrase();
+    const settings = AppSettings.getInstance();
+    this.cloudVault = settings.isCloudVaultEnabled();
+    this.vaultPassphrase = settings.getVaultPassphrase();
+    this.rememberVault = settings.isRememberVaultPassphrase();
     const he = HostStore.getInstance().getHuksError();
     this.huksStatus = he ? `HUKS：${he}` : 'HUKS：就绪或将在首次加密时初始化';
     this.refreshSession();
@@ -245,6 +250,9 @@ struct AccountPage {
     this.busy = true;
     try {
       await AuthServiceFactory.create().logout();
+      // 退出登录清除保险柜口令（含 HUKS 落盘密文）
+      await AppSettings.getInstance().clearVaultPassphrase(true);
+      this.vaultPassphrase = '';
       this.refreshSession();
       this.statusText = '';
       this.toast('已退出登录');
@@ -288,7 +296,7 @@ struct AccountPage {
       this.cloudVault = false;
       return;
     }
-    AppSettings.getInstance().setVaultPassphrase(this.vaultPassphrase);
+    await AppSettings.getInstance().setVaultPassphrase(this.vaultPassphrase);
     await AppSettings.getInstance().setCloudVaultEnabled(next);
     this.cloudVault = next;
     if (next) {
@@ -561,7 +569,7 @@ struct AccountPage {
               .type(InputType.Password)
               .onChange((v: string) => {
                 this.vaultPassphrase = v;
-                AppSettings.getInstance().setVaultPassphrase(v);
+                void AppSettings.getInstance().setVaultPassphrase(v);
               })
               .margin({ bottom: 4 })
             Text($r('app.string.account_vault_passphrase_hint'))
@@ -583,6 +591,28 @@ struct AccountPage {
             }
             .width('100%')
             .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+            if (this.cloudVault) {
+              Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+              Row() {
+                Text($r('app.string.account_remember_vault_passphrase'))
+                  .fontSize(16)
+                  .fontColor(this.textPrimary())
+                  .layoutWeight(1)
+                Toggle({ type: ToggleType.Switch, isOn: this.rememberVault })
+                  .selectedColor(this.accent())
+                  .onChange((isOn: boolean) => {
+                    this.rememberVault = isOn;
+                    void AppSettings.getInstance().setRememberVaultPassphrase(isOn);
+                  })
+              }
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 10, bottom: 4 })
+              Text($r('app.string.account_remember_vault_hint'))
+                .fontSize(12)
+                .fontColor(this.textSecondary())
+                .width('100%')
+                .padding({ left: 16, right: 16, bottom: 10 })
+            }
             Text(this.huksStatus)
               .fontSize(12)
               .fontColor(this.textSecondary())

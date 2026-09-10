@@ -25,6 +25,7 @@ struct VncSessionPage {
   private host: HostConfig | null = null;
 
   aboutToAppear(): void {
+    this.session = VncSessionFactory.create();
     const params = router.getParams() as Record<string, string>;
     let hostId = '';
     if (params && params['hostId']) {

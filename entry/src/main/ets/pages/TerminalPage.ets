@@ -25,6 +25,8 @@ struct TerminalPage {
   private host: HostConfig | null = null;
 
   aboutToAppear(): void {
+    // 连接前新鲜工厂：避免 field-init 时 AppSettings/.so 未就绪而永久 Mock
+    this.session = SshSessionFactory.create();
     const params = router.getParams() as Record<string, string>;
     let hostId = '';
     if (params && params['hostId']) {

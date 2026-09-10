@@ -28,6 +28,7 @@ struct FtpBrowserPage {
   private host: HostConfig | null = null;
 
   aboutToAppear(): void {
+    this.session = FtpSessionFactory.create();
     const params = router.getParams() as Record<string, string>;
     let hostId = '';
     if (params && params['hostId']) {

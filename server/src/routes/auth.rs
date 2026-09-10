@@ -1,5 +1,5 @@
 use crate::auth::password::{hash_password, verify_password};
-use crate::cache::{jti_deny_key, profile_key, revoke_key, session_key};
+use crate::cache::{auth_user_key, jti_deny_key, profile_key, revoke_key, session_key};
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::routes::AuthUser;
@@ -190,6 +190,7 @@ pub async fn logout(
         .await;
     state.cache.del(&session_key(&claims.sub)).await;
     state.cache.del(&profile_key(&claims.sub)).await;
+    state.cache.del(&auth_user_key(&claims.sub)).await;
     Ok(Json(LogoutResponse { ok: true }))
 }
 

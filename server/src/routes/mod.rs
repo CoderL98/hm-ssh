@@ -5,14 +5,21 @@ pub mod me;
 pub mod sync;
 
 use crate::auth::jwt::Claims;
+use crate::cache::{auth_user_key, AUTH_USER_CACHE_TTL_SECS};
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::extract::FromRequestParts;
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
+use std::time::Duration;
 
 pub struct AuthUser(pub Claims);
+
+/// Cached AuthUser DB status. Positive ("ok") lookups are cached with a short TTL;
+/// disabled/deleted are rejected and any stale positive entry is deleted.
+const CACHE_OK: &str = "ok";
+const CACHE_DISABLED: &str = "disabled";
 
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
@@ -36,13 +43,50 @@ impl FromRequestParts<AppState> for AuthUser {
         if auth::is_revoked(state, &claims.sub, claims.iat).await {
             return Err(AppError::Unauthorized("session revoked".into()));
         }
-        // Defense in depth: disabled/deleted stay blocked after cache restart
+
+        // Short-TTL cache of positive user lookups (invalidate-on-write preferred).
+        let cache_key = auth_user_key(&claims.sub);
+        if let Some(raw) = state.cache.get(&cache_key).await {
+            match raw.as_str() {
+                CACHE_OK => return Ok(AuthUser(claims)),
+                CACHE_DISABLED => {
+                    return Err(AppError::Unauthorized("account disabled".into()));
+                }
+                _ => {
+                    // Unknown / corrupt → fall through to DB
+                    state.cache.del(&cache_key).await;
+                }
+            }
+        }
+
         match db::find_user_by_id(&state.pool, &claims.sub).await? {
             Some(user) if user.deleted_at.is_some() || user.disabled => {
+                // Cache disabled briefly so repeated hits stay cheap; revoke/disable
+                // paths also invalidate so re-enable is prompt.
+                state
+                    .cache
+                    .set(
+                        &cache_key,
+                        CACHE_DISABLED.into(),
+                        Duration::from_secs(AUTH_USER_CACHE_TTL_SECS),
+                    )
+                    .await;
                 return Err(AppError::Unauthorized("account disabled".into()));
             }
-            None => return Err(AppError::Unauthorized("user not found".into())),
-            Some(_) => {}
+            None => {
+                state.cache.del(&cache_key).await;
+                return Err(AppError::Unauthorized("user not found".into()));
+            }
+            Some(_) => {
+                state
+                    .cache
+                    .set(
+                        &cache_key,
+                        CACHE_OK.into(),
+                        Duration::from_secs(AUTH_USER_CACHE_TTL_SECS),
+                    )
+                    .await;
+            }
         }
         Ok(AuthUser(claims))
     }

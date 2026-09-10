@@ -1,6 +1,6 @@
 //! Admin management API under `/api/v1/admin/*`.
 
-use crate::cache::{profile_key, revoke_key, session_key};
+use crate::cache::{auth_user_key, profile_key, revoke_key, session_key};
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::routes::AuthUser;
@@ -146,6 +146,8 @@ pub async fn patch_user(
             return Err(AppError::BadRequest("cannot disable yourself".into()));
         }
         db::set_disabled(&state.pool, &id, disabled).await?;
+        // Always drop AuthUser cache so disable/re-enable is prompt within TTL.
+        state.cache.del(&auth_user_key(&id)).await;
         if disabled {
             revoke_sessions(&state, &id).await;
         }
@@ -243,4 +245,5 @@ async fn revoke_sessions(state: &AppState, user_id: &str) {
         .await;
     state.cache.del(&session_key(user_id)).await;
     state.cache.del(&profile_key(user_id)).await;
+    state.cache.del(&auth_user_key(user_id)).await;
 }

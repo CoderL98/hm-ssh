@@ -152,13 +152,15 @@ hm-ssh/
 | 组件 | 说明 |
 | --- | --- |
 | `AuthService` | JWT + refresh；**HUKS 加密**后写入 preferences；HTTP 自动 refresh；401 重试 |
-| `HuksCrypto` | `@kit.UniversalKeystoreKit` AES；可选口令 PBKDF「云端保险柜」 |
+| `HuksCrypto` | `@kit.UniversalKeystoreKit` AES；可选口令 PBKDF「云端保险柜」；口令可 HUKS 加密后记住 |
 | `CloudSyncService` | hosts/settings 同步；默认剥离明文；保险柜开启时带 `passwordEnc`/`privateKeyEnc` |
 | `server/` | Rust 云端；`strip_host_secrets` **保留** `passwordEnc`/`privateKeyEnc`，清空明文 |
 
 **合并策略（last-write-wins）**：以服务端资源级 `updated_at`（Unix ms）为权威；主机列表按 `id` 合并；本地 `HostStore` 仍是离线真相源。
 
 **机密策略**：明文 `password`/`privateKey` 永不上传。本机 HUKS 密文存 `passwordLocalEnc`。可选「同步加密密钥到云端」（帐号页，默认 OFF）：用保险柜口令 PBKDF 派生密钥加密为 `passwordEnc`/`privateKeyEnc` 再同步。
+
+**保险柜口令持久化（权衡）**：开启保险柜后默认「记住保险柜口令」——口令经本机 HUKS AES 加密写入 preferences，重启后可解开云端同步下来的 `passwordEnc`，无需每次重输。代价是本机已解锁设备上应用可自动取回口令（与记住登录 Token 同类风险）；退出登录或关闭保险柜会清除落盘密文。可在帐号页关闭「记住」改为仅内存保存。
 
 #### 客户端登录与同步
 
@@ -208,6 +210,10 @@ pnpm install && pnpm dev           # http://localhost:5173
 - **NAPI 完整源码** `native/hmssh_native`（SSH/FTP/VNC）+ ArkTS Native*Session / 工厂回退 Mock
 - **HUKS** 加密 Token 与主机机密；HostStore 明文迁移；帐号页「云端密钥保险柜」
 - 服务端 `strip_host_secrets` 保留 `passwordEnc` / `privateKeyEnc`
+- Admin UI access-token **自动 refresh**（skew ~60s / 401 重试一次，失败回登录页）
+- AuthUser **短 TTL 缓存**（~45s，logout/revoke/disable/delete 时 invalidate）
+- 保险柜口令 **HUKS 落盘**（「记住保险柜口令」默认 ON；logout / 关保险柜清除）
+- 连接路径 **新鲜工厂**（Index / Terminal / FTP / VNC）；`preferNative` 翻转时重建会话
 
 ### 仍待 / 需 DevEco
 
@@ -217,6 +223,7 @@ pnpm install && pnpm dev           # http://localhost:5173
 - 图标；平板 / PC 多窗口与快捷键；终端 ANSI 彩色
 - 真机请将帐号页基址改为局域网 IP（出厂默认 10.0.2.2 面向模拟器）
 - 本环境未跑 DevEco/hvigor；分布式限流需 Redis
+- 用户自助改密 API（改密后需同样 invalidate AuthUser 缓存）
 
 ## 许可
 

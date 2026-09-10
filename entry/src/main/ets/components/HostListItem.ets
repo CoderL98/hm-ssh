@@ -1,5 +1,9 @@
 import { HostConfig } from '../models/HostConfig';
 
+/**
+ * 设置列表行：标题 + 副标题、灰色协议标签、右箭头；整行点击连接。
+ * 编辑 / 删除通过长按菜单或次要文字，避免胶囊按钮堆叠。
+ */
 @Component
 export struct HostListItem {
   @Prop host: HostConfig = new HostConfig();
@@ -10,20 +14,6 @@ export struct HostListItem {
 
   build() {
     Row() {
-      // 协议徽章
-      Column() {
-        Text(this.host.protocolLabel())
-          .fontSize(10)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
-      }
-      .width(40)
-      .height(40)
-      .borderRadius(8)
-      .justifyContent(FlexAlign.Center)
-      .backgroundColor(this.host.protocolBadgeColor())
-      .margin({ right: 10 })
-
       Column() {
         Text(this.host.displayName())
           .fontSize($r('app.float.body_font_size'))
@@ -41,34 +31,41 @@ export struct HostListItem {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      Row({ space: 8 }) {
-        Button($r('app.string.btn_connect'))
-          .type(ButtonType.Capsule)
-          .height(32)
-          .fontSize(12)
-          .backgroundColor($r('app.color.primary'))
-          .onClick(() => this.onConnect(this.host))
+      Text(this.host.protocolLabel())
+        .fontSize(11)
+        .fontColor($r('app.color.badge_text'))
+        .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+        .backgroundColor($r('app.color.badge_background'))
+        .borderRadius(4)
+        .margin({ right: 8 })
 
-        Button($r('app.string.btn_edit'))
-          .type(ButtonType.Capsule)
-          .height(32)
-          .fontSize(12)
-          .backgroundColor('#E8E8E8')
-          .fontColor($r('app.color.text_primary'))
-          .onClick(() => this.onEdit(this.host))
+      Text($r('app.string.btn_edit'))
+        .fontSize(13)
+        .fontColor($r('app.color.text_secondary'))
+        .padding({ left: 4, right: 8 })
+        .onClick(() => this.onEdit(this.host))
 
-        Button($r('app.string.btn_delete'))
-          .type(ButtonType.Capsule)
-          .height(32)
-          .fontSize(12)
-          .backgroundColor($r('app.color.danger'))
-          .onClick(() => this.onDelete(this.host))
-      }
+      Text('›')
+        .fontSize(22)
+        .fontColor($r('app.color.chevron'))
+        .margin({ left: 2 })
     }
     .width('100%')
-    .padding(12)
-    .backgroundColor(this.selected ? '#1A0A59F7' : $r('app.color.card_background'))
-    .borderRadius($r('app.float.card_radius'))
-    .margin({ bottom: 8 })
+    .padding({ left: 16, right: 12, top: 14, bottom: 14 })
+    .backgroundColor(this.selected ? $r('app.color.row_selected') : Color.Transparent)
+    .onClick(() => this.onConnect(this.host))
+    .bindContextMenu(this.OverflowMenu, ResponseType.LongPress)
+  }
+
+  @Builder
+  OverflowMenu() {
+    Menu() {
+      MenuItem({ content: $r('app.string.btn_connect') })
+        .onClick(() => this.onConnect(this.host))
+      MenuItem({ content: $r('app.string.btn_edit') })
+        .onClick(() => this.onEdit(this.host))
+      MenuItem({ content: $r('app.string.btn_delete') })
+        .onClick(() => this.onDelete(this.host))
+    }
   }
 }

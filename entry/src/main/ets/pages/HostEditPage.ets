@@ -2,6 +2,9 @@ import { router, promptAction } from '@kit.ArkUI';
 import { HostConfig, HostProtocol } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
 
+/**
+ * 主机编辑：设置表单风格 —— 顶栏取消/保存文字操作 + 白色分组字段。
+ */
 @Entry
 @Component
 struct HostEditPage {
@@ -41,69 +44,107 @@ struct HostEditPage {
   build() {
     Column() {
       Row() {
-        Button($r('app.string.btn_cancel'))
-          .type(ButtonType.Normal)
-          .backgroundColor(Color.Transparent)
+        Text($r('app.string.btn_cancel'))
+          .fontSize(16)
           .fontColor($r('app.color.primary'))
+          .padding({ left: 4, right: 12, top: 8, bottom: 8 })
           .onClick(() => {
             router.back();
           })
         Text(this.isEdit ? $r('app.string.host_edit') : $r('app.string.host_add'))
-          .fontSize($r('app.float.page_title_font_size'))
-          .fontWeight(FontWeight.Bold)
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
-        Button($r('app.string.btn_save'))
-          .type(ButtonType.Normal)
-          .backgroundColor(Color.Transparent)
+        Text($r('app.string.btn_save'))
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.primary'))
+          .padding({ left: 12, right: 4, top: 8, bottom: 8 })
           .onClick(() => {
             this.save();
           })
       }
       .width('100%')
-      .padding(12)
+      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
 
       Scroll() {
-        Column({ space: 12 }) {
-          this.protocolPicker()
-          this.formField('显示名称', this.name, (v: string) => {
-            this.name = v;
-          }, '例如：家里 NAS')
-          this.formField('主机地址', this.host, (v: string) => {
-            this.host = v;
-          }, 'IP 或域名')
-          this.formField('端口', this.portText, (v: string) => {
-            this.portText = v;
-          }, `${HostConfig.defaultPort(this.protocol)}`)
+        Column({ space: 16 }) {
+          // 协议分组
+          Column() {
+            this.protocolPicker()
+          }
+          .width('100%')
+          .backgroundColor($r('app.color.card_background'))
+          .borderRadius($r('app.float.card_radius'))
+          .clip(true)
+
+          // 基本信息分组
+          Column() {
+            this.formRow('显示名称', this.name, (v: string) => {
+              this.name = v;
+            }, '例如：家里 NAS')
+            this.thinDivider()
+            this.formRow('主机地址', this.host, (v: string) => {
+              this.host = v;
+            }, 'IP 或域名')
+            this.thinDivider()
+            this.formRow('端口', this.portText, (v: string) => {
+              this.portText = v;
+            }, `${HostConfig.defaultPort(this.protocol)}`)
+          }
+          .width('100%')
+          .backgroundColor($r('app.color.card_background'))
+          .borderRadius($r('app.float.card_radius'))
+          .clip(true)
 
           if (this.protocol === 'ssh' || this.protocol === 'ftp') {
-            this.formField('用户名', this.username, (v: string) => {
-              this.username = v;
-            }, this.protocol === 'ftp' ? 'ftpuser' : 'root')
-          }
-
-          this.passwordField()
-
-          if (this.protocol === 'ssh') {
-            this.privateKeyField()
-          }
-
-          if (this.protocol === 'ftp') {
-            this.formField('初始路径（可选）', this.remotePath, (v: string) => {
-              this.remotePath = v;
-            }, '/')
+            Column() {
+              this.formRow('用户名', this.username, (v: string) => {
+                this.username = v;
+              }, this.protocol === 'ftp' ? 'ftpuser' : 'root')
+              this.thinDivider()
+              this.passwordRow()
+              if (this.protocol === 'ssh') {
+                this.thinDivider()
+                this.privateKeyRow()
+              }
+              if (this.protocol === 'ftp') {
+                this.thinDivider()
+                this.formRow('初始路径（可选）', this.remotePath, (v: string) => {
+                  this.remotePath = v;
+                }, '/')
+              }
+            }
+            .width('100%')
+            .backgroundColor($r('app.color.card_background'))
+            .borderRadius($r('app.float.card_radius'))
+            .clip(true)
           }
 
           if (this.protocol === 'vnc') {
+            Column() {
+              this.passwordRow()
+            }
+            .width('100%')
+            .backgroundColor($r('app.color.card_background'))
+            .borderRadius($r('app.float.card_radius'))
+            .clip(true)
+
             Text($r('app.string.vnc_edit_hint'))
               .fontSize(12)
               .fontColor($r('app.color.text_secondary'))
               .width('100%')
-              .margin({ top: 4 })
+              .padding({ left: 4, right: 4 })
           }
         }
-        .padding($r('app.float.page_padding'))
+        .padding({
+          left: $r('app.float.page_padding'),
+          right: $r('app.float.page_padding'),
+          top: 8,
+          bottom: 24
+        })
       }
       .layoutWeight(1)
       .width('100%')
@@ -114,12 +155,20 @@ struct HostEditPage {
   }
 
   @Builder
+  thinDivider() {
+    Divider()
+      .color($r('app.color.divider'))
+      .strokeWidth(0.5)
+      .margin({ left: 16 })
+  }
+
+  @Builder
   protocolPicker() {
     Column() {
       Text($r('app.string.host_protocol'))
-        .fontSize(14)
+        .fontSize(13)
         .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 6 })
+        .margin({ left: 16, top: 12, bottom: 8 })
         .width('100%')
       Row({ space: 8 }) {
         this.protocolChip('SSH', 'ssh')
@@ -127,6 +176,7 @@ struct HostEditPage {
         this.protocolChip('VNC', 'vnc')
       }
       .width('100%')
+      .padding({ left: 16, right: 16, bottom: 14 })
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -134,13 +184,19 @@ struct HostEditPage {
 
   @Builder
   protocolChip(label: string, value: HostProtocol) {
-    Button(label)
-      .type(ButtonType.Capsule)
-      .height(36)
+    Text(label)
       .fontSize(14)
+      .fontWeight(this.protocol === value ? FontWeight.Medium : FontWeight.Regular)
+      .fontColor(this.protocol === value ? $r('app.color.primary') : $r('app.color.text_primary'))
+      .textAlign(TextAlign.Center)
       .layoutWeight(1)
-      .backgroundColor(this.protocol === value ? $r('app.color.primary') : '#E8E8E8')
-      .fontColor(this.protocol === value ? Color.White : $r('app.color.text_primary'))
+      .height(36)
+      .borderRadius(8)
+      .backgroundColor(this.protocol === value ? '#1A0A59F7' : $r('app.color.control_secondary'))
+      .border({
+        width: this.protocol === value ? 1 : 0,
+        color: $r('app.color.primary')
+      })
       .onClick(() => {
         this.onProtocolChange(value);
       })
@@ -152,7 +208,6 @@ struct HostEditPage {
     }
     const prevDefault = HostConfig.defaultPort(this.lastProtocol);
     let port = parseInt(this.portText, 10);
-    // 若端口仍是上一协议默认值，则切换到新协议默认端口
     if (isNaN(port) || port === prevDefault) {
       this.portText = `${HostConfig.defaultPort(next)}`;
     }
@@ -161,64 +216,67 @@ struct HostEditPage {
   }
 
   @Builder
-  formField(label: string, value: string, onChange: (v: string) => void, placeholder: string) {
-    Column() {
+  formRow(label: string, value: string, onChange: (v: string) => void, placeholder: string) {
+    Row() {
       Text(label)
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 6 })
-        .width('100%')
+        .fontSize(16)
+        .fontColor($r('app.color.text_primary'))
+        .width(96)
       TextInput({ placeholder: placeholder, text: value })
-        .width('100%')
-        .height(44)
-        .backgroundColor($r('app.color.card_background'))
+        .layoutWeight(1)
+        .height(48)
+        .backgroundColor(Color.Transparent)
+        .padding({ left: 0, right: 0 })
         .onChange(onChange)
     }
     .width('100%')
-    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 16, right: 16 })
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
-  passwordField() {
-    Column() {
+  passwordRow() {
+    Row() {
       Text(this.protocol === 'vnc' ? $r('app.string.vnc_password') : $r('app.string.host_password'))
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 6 })
-        .width('100%')
+        .fontSize(16)
+        .fontColor($r('app.color.text_primary'))
+        .width(96)
       TextInput({ placeholder: '可选，演示用明文存储', text: this.password })
-        .width('100%')
-        .height(44)
+        .layoutWeight(1)
+        .height(48)
         .type(InputType.Password)
-        .backgroundColor($r('app.color.card_background'))
+        .backgroundColor(Color.Transparent)
+        .padding({ left: 0, right: 0 })
         .onChange((v: string) => {
           this.password = v;
         })
     }
     .width('100%')
-    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 16, right: 16 })
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
-  privateKeyField() {
+  privateKeyRow() {
     Column() {
       Text($r('app.string.host_private_key'))
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 6 })
+        .fontSize(16)
+        .fontColor($r('app.color.text_primary'))
         .width('100%')
+        .margin({ bottom: 6 })
       TextArea({
         placeholder: $r('app.string.host_private_key_placeholder'),
         text: this.privateKey
       })
         .width('100%')
-        .height(120)
-        .backgroundColor($r('app.color.card_background'))
+        .height(100)
+        .backgroundColor(Color.Transparent)
         .onChange((v: string) => {
           this.privateKey = v;
         })
     }
     .width('100%')
+    .padding({ left: 16, right: 16, top: 10, bottom: 12 })
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -228,7 +286,6 @@ struct HostEditPage {
       promptAction.showToast({ message: $r('app.string.toast_invalid_host') });
       return;
     }
-    // SSH / FTP 需要用户名；VNC 仅需主机与密码
     if (this.protocol !== 'vnc') {
       const user = this.username.trim();
       if (!user) {

@@ -10,7 +10,7 @@
     },
     {
       "name": "card_background",
-      "value": "#1A1A1A"
+      "value": "#1C1C1E"
     },
     {
       "name": "primary",
@@ -45,12 +45,36 @@
       "value": "#666666"
     },
     {
+      "name": "badge_background",
+      "value": "#2C2C2E"
+    },
+    {
+      "name": "badge_text",
+      "value": "#99FFFFFF"
+    },
+    {
       "name": "ftp_badge",
-      "value": "#E67E22"
+      "value": "#99FFFFFF"
     },
     {
       "name": "vnc_badge",
-      "value": "#8E44AD"
+      "value": "#99FFFFFF"
+    },
+    {
+      "name": "ssh_badge",
+      "value": "#99FFFFFF"
+    },
+    {
+      "name": "chevron",
+      "value": "#66FFFFFF"
+    },
+    {
+      "name": "row_selected",
+      "value": "#331A59F7"
+    },
+    {
+      "name": "control_secondary",
+      "value": "#2C2C2E"
     },
     {
       "name": "vnc_desktop_bg",

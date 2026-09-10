@@ -1,5 +1,8 @@
 import { FtpEntry } from '../services/FtpSession';
 
+/**
+ * FTP 浏览器：设置纯净风顶栏与工具条；列表为白底设置行。
+ */
 @Component
 export struct FtpBrowserView {
   @Prop title: string = '';
@@ -21,26 +24,28 @@ export struct FtpBrowserView {
     Column() {
       Row() {
         Text(this.title.length > 0 ? this.title : 'FTP')
-          .fontSize(16)
+          .fontSize(17)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         if (this.connected) {
-          Button($r('app.string.btn_disconnect'))
-            .type(ButtonType.Capsule)
-            .height(32)
-            .fontSize(12)
-            .backgroundColor($r('app.color.danger'))
+          Text($r('app.string.btn_disconnect'))
+            .fontSize(15)
+            .fontColor($r('app.color.danger'))
+            .padding({ left: 8, right: 4, top: 6, bottom: 6 })
             .onClick(() => this.onDisconnect())
         }
       }
       .width('100%')
-      .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+      .padding({ left: 16, right: 12, top: 12, bottom: 12 })
       .backgroundColor($r('app.color.card_background'))
 
-      // 面包屑 + 操作
+      Divider()
+        .color($r('app.color.divider'))
+        .strokeWidth(0.5)
+
       Column() {
         Scroll() {
           Row({ space: 4 }) {
@@ -61,44 +66,38 @@ export struct FtpBrowserView {
         .scrollBar(BarState.Off)
         .width('100%')
 
-        Row({ space: 8 }) {
-          Button($r('app.string.ftp_go_up'))
-            .type(ButtonType.Capsule)
-            .height(30)
-            .fontSize(12)
+        Row({ space: 16 }) {
+          Text($r('app.string.ftp_go_up'))
+            .fontSize(14)
+            .fontColor(this.connected && this.cwd !== '/' ? $r('app.color.primary') :
+              $r('app.color.text_secondary'))
             .enabled(this.connected && this.cwd !== '/')
-            .backgroundColor('#E8E8E8')
-            .fontColor($r('app.color.text_primary'))
             .onClick(() => this.onGoUp())
-          Button($r('app.string.ftp_refresh'))
-            .type(ButtonType.Capsule)
-            .height(30)
-            .fontSize(12)
+          Text($r('app.string.ftp_refresh'))
+            .fontSize(14)
+            .fontColor(this.connected ? $r('app.color.primary') : $r('app.color.text_secondary'))
             .enabled(this.connected)
-            .backgroundColor('#E8E8E8')
-            .fontColor($r('app.color.text_primary'))
             .onClick(() => this.onRefresh())
-          Button($r('app.string.ftp_upload'))
-            .type(ButtonType.Capsule)
-            .height(30)
-            .fontSize(12)
+          Text($r('app.string.ftp_upload'))
+            .fontSize(14)
+            .fontColor(this.connected ? $r('app.color.primary') : $r('app.color.text_secondary'))
             .enabled(this.connected)
-            .backgroundColor($r('app.color.ftp_badge'))
             .onClick(() => this.onUploadStub())
         }
         .width('100%')
-        .margin({ top: 8 })
+        .margin({ top: 10 })
       }
       .width('100%')
-      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .padding({ left: 16, right: 16, top: 10, bottom: 10 })
       .alignItems(HorizontalAlign.Start)
+      .backgroundColor($r('app.color.card_background'))
 
       if (this.statusMessage.length > 0) {
         Text(this.statusMessage)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
-          .padding({ left: 12, right: 12, bottom: 6 })
+          .padding({ left: 16, right: 16, top: 8, bottom: 4 })
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
@@ -108,6 +107,7 @@ export struct FtpBrowserView {
           LoadingProgress()
             .width(40)
             .height(40)
+            .color($r('app.color.primary'))
           Text($r('app.string.ftp_loading'))
             .fontSize(14)
             .fontColor($r('app.color.text_secondary'))
@@ -127,9 +127,10 @@ export struct FtpBrowserView {
             .margin({ top: 8 })
             .padding(12)
             .textAlign(TextAlign.Center)
-          Button($r('app.string.ftp_refresh'))
+          Text($r('app.string.ftp_refresh'))
+            .fontSize(15)
+            .fontColor($r('app.color.primary'))
             .margin({ top: 16 })
-            .backgroundColor($r('app.color.primary'))
             .onClick(() => this.onRefresh())
         }
         .layoutWeight(1)
@@ -147,9 +148,6 @@ export struct FtpBrowserView {
         .justifyContent(FlexAlign.Center)
       } else if (this.entries.length === 0) {
         Column() {
-          Text('📂')
-            .fontSize(40)
-            .margin({ bottom: 8 })
           Text($r('app.string.ftp_empty_dir'))
             .fontSize(14)
             .fontColor($r('app.color.text_secondary'))
@@ -180,16 +178,19 @@ export struct FtpBrowserView {
                 .layoutWeight(1)
 
                 if (!entry.isDirectory) {
-                  Button($r('app.string.ftp_download'))
-                    .type(ButtonType.Capsule)
-                    .height(28)
-                    .fontSize(11)
-                    .backgroundColor($r('app.color.primary'))
+                  Text($r('app.string.ftp_download'))
+                    .fontSize(13)
+                    .fontColor($r('app.color.primary'))
+                    .padding({ left: 8, right: 4 })
                     .onClick(() => this.onDownload(entry))
+                } else {
+                  Text('›')
+                    .fontSize(20)
+                    .fontColor($r('app.color.chevron'))
                 }
               }
               .width('100%')
-              .padding(12)
+              .padding({ left: 16, right: 12, top: 12, bottom: 12 })
               .onClick(() => {
                 if (entry.isDirectory) {
                   this.onNavigate(entry);
@@ -200,10 +201,19 @@ export struct FtpBrowserView {
         }
         .width('100%')
         .layoutWeight(1)
+        .margin({
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: 12
+        })
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius($r('app.float.card_radius'))
+        .clip(true)
         .divider({
           strokeWidth: 0.5,
           color: $r('app.color.divider'),
-          startMargin: 40,
+          startMargin: 44,
           endMargin: 12
         })
       }

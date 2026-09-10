@@ -1,5 +1,8 @@
 import { VncFramebufferInfo } from '../services/VncSession';
 
+/**
+ * VNC 会话：设置风顶栏 chrome；仅桌面内容区保持深色占位。
+ */
 @Component
 export struct VncSessionView {
   @Prop title: string = '';
@@ -15,40 +18,41 @@ export struct VncSessionView {
     Column() {
       Row() {
         Text(this.title.length > 0 ? this.title : 'VNC')
-          .fontSize(16)
+          .fontSize(17)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         if (this.connected) {
-          Button($r('app.string.btn_disconnect'))
-            .type(ButtonType.Capsule)
-            .height(32)
-            .fontSize(12)
-            .backgroundColor($r('app.color.danger'))
+          Text($r('app.string.btn_disconnect'))
+            .fontSize(15)
+            .fontColor($r('app.color.danger'))
+            .padding({ left: 8, right: 4, top: 6, bottom: 6 })
             .onClick(() => this.onDisconnect())
         }
       }
       .width('100%')
-      .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+      .padding({ left: 16, right: 12, top: 12, bottom: 12 })
       .backgroundColor($r('app.color.card_background'))
+
+      Divider()
+        .color($r('app.color.divider'))
+        .strokeWidth(0.5)
 
       if (this.statusMessage.length > 0) {
         Text(this.statusMessage)
           .fontSize(12)
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
-          .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+          .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+          .backgroundColor($r('app.color.card_background'))
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
 
       if (!this.connected || !this.framebuffer) {
         Column() {
-          Text('🖥️')
-            .fontSize(48)
-            .margin({ bottom: 12 })
           Text($r('app.string.vnc_not_connected'))
             .fontSize(16)
             .fontColor($r('app.color.text_secondary'))
@@ -62,9 +66,8 @@ export struct VncSessionView {
         .layoutWeight(1)
         .width('100%')
         .justifyContent(FlexAlign.Center)
-        .backgroundColor($r('app.color.vnc_desktop_bg'))
+        .backgroundColor($r('app.color.page_background'))
       } else {
-        // 假帧缓冲区域：占位画布 + 触摸钩子
         Stack() {
           Column() {
             Text(this.fbLabel())
@@ -87,7 +90,6 @@ export struct VncSessionView {
           .justifyContent(FlexAlign.Center)
           .backgroundColor(this.fbColor())
 
-          // 网格装饰，模拟桌面
           Column() {
             ForEach([0, 1, 2, 3], (row: number) => {
               Row() {
@@ -124,12 +126,11 @@ export struct VncSessionView {
           }
         })
 
-        Row({ space: 8 }) {
-          Button($r('app.string.vnc_key_stub'))
-            .type(ButtonType.Capsule)
-            .height(32)
-            .fontSize(12)
-            .backgroundColor($r('app.color.vnc_badge'))
+        Row({ space: 12 }) {
+          Text($r('app.string.vnc_key_stub'))
+            .fontSize(14)
+            .fontColor($r('app.color.primary'))
+            .padding({ left: 4, right: 8, top: 6, bottom: 6 })
             .onClick(() => this.onKeyStub())
           Text($r('app.string.vnc_native_note_short'))
             .fontSize(11)
@@ -138,12 +139,13 @@ export struct VncSessionView {
             .maxLines(2)
         }
         .width('100%')
-        .padding(10)
+        .padding({ left: 16, right: 16, top: 10, bottom: 10 })
         .backgroundColor($r('app.color.card_background'))
       }
     }
     .width('100%')
     .height('100%')
+    .backgroundColor($r('app.color.page_background'))
   }
 
   private fbLabel(): string {
@@ -167,4 +169,3 @@ export struct VncSessionView {
     return '#1A2332';
   }
 }
-

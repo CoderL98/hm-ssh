@@ -375,7 +375,7 @@ struct Index {
         .layoutWeight(1)
         .height('100%')
         .justifyContent(FlexAlign.Center)
-        .backgroundColor($r('app.color.terminal_bg'))
+        .backgroundColor($r('app.color.page_background'))
       }
     }
     .width('100%')

@@ -46,8 +46,9 @@ export class HostConfig {
     return `${user}@${this.host}`;
   }
 
+  /** 列表副标题：地址:端口（协议由静默标签展示） */
   subtitle(): string {
-    return `${this.protocolLabel()} · ${this.host}:${this.port}`;
+    return `${this.host}:${this.port}`;
   }
 
   protocolLabel(): string {
@@ -60,14 +61,19 @@ export class HostConfig {
     return 'SSH';
   }
 
+  /**
+   * 协议标签色：纯净风静默中性色，不再使用高饱和橙/紫/蓝块。
+   * UI 侧优先用 badge_background + badge_text 资源；此方法供兼容旧调用。
+   */
   protocolBadgeColor(): string {
+    // 与 badge_text / 次要文案同级的中性色
     if (this.protocol === 'ftp') {
-      return '#E67E22';
+      return '#66000000';
     }
     if (this.protocol === 'vnc') {
-      return '#8E44AD';
+      return '#66000000';
     }
-    return '#0A59F7';
+    return '#66000000';
   }
 
   /** 按协议返回推荐默认端口 */

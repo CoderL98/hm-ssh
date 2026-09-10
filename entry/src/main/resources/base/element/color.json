@@ -45,12 +45,36 @@
       "value": "#CCCCCC"
     },
     {
+      "name": "badge_background",
+      "value": "#F1F3F5"
+    },
+    {
+      "name": "badge_text",
+      "value": "#99000000"
+    },
+    {
       "name": "ftp_badge",
-      "value": "#E67E22"
+      "value": "#99000000"
     },
     {
       "name": "vnc_badge",
-      "value": "#8E44AD"
+      "value": "#99000000"
+    },
+    {
+      "name": "ssh_badge",
+      "value": "#99000000"
+    },
+    {
+      "name": "chevron",
+      "value": "#99000000"
+    },
+    {
+      "name": "row_selected",
+      "value": "#1A0A59F7"
+    },
+    {
+      "name": "control_secondary",
+      "value": "#F1F3F5"
     },
     {
       "name": "vnc_desktop_bg",

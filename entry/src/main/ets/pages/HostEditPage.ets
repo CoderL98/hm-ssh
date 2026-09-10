@@ -1,6 +1,8 @@
 import { router, promptAction } from '@kit.ArkUI';
 import { HostConfig, HostProtocol } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 /**
  * 主机编辑：设置表单风格 —— 顶栏取消/保存文字操作 + 白色分组字段。
@@ -18,7 +20,18 @@ struct HostEditPage {
   @State protocol: HostProtocol = 'ssh';
   @State editingId: string = '';
   @State isEdit: boolean = false;
+  @StorageLink('themeRev') themeRev: number = 0;
   private lastProtocol: HostProtocol = 'ssh';
+
+  private accent(): string {
+    void this.themeRev;
+    return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
+  }
+
+  private accentSoft(): string {
+    void this.themeRev;
+    return ThemeTokens.accentSoft(ThemeStore.getInstance().getAccentId());
+  }
 
   aboutToAppear(): void {
     const params = router.getParams() as Record<string, string>;
@@ -46,7 +59,7 @@ struct HostEditPage {
       Row() {
         Text($r('app.string.btn_cancel'))
           .fontSize(16)
-          .fontColor($r('app.color.primary'))
+          .fontColor(this.accent())
           .padding({ left: 4, right: 12, top: 8, bottom: 8 })
           .onClick(() => {
             router.back();
@@ -60,7 +73,7 @@ struct HostEditPage {
         Text($r('app.string.btn_save'))
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.primary'))
+          .fontColor(this.accent())
           .padding({ left: 12, right: 4, top: 8, bottom: 8 })
           .onClick(() => {
             this.save();
@@ -187,15 +200,15 @@ struct HostEditPage {
     Text(label)
       .fontSize(14)
       .fontWeight(this.protocol === value ? FontWeight.Medium : FontWeight.Regular)
-      .fontColor(this.protocol === value ? $r('app.color.primary') : $r('app.color.text_primary'))
+      .fontColor(this.protocol === value ? this.accent() : $r('app.color.text_primary'))
       .textAlign(TextAlign.Center)
       .layoutWeight(1)
       .height(36)
       .borderRadius(8)
-      .backgroundColor(this.protocol === value ? '#1A0A59F7' : $r('app.color.control_secondary'))
+      .backgroundColor(this.protocol === value ? this.accentSoft() : $r('app.color.control_secondary'))
       .border({
         width: this.protocol === value ? 1 : 0,
-        color: $r('app.color.primary')
+        color: this.accent()
       })
       .onClick(() => {
         this.onProtocolChange(value);

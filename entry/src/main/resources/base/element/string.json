@@ -183,6 +183,54 @@
     {
       "name": "vnc_key_stub",
       "value": "模拟按键"
+    },
+    {
+      "name": "settings_title",
+      "value": "设置"
+    },
+    {
+      "name": "settings_entry",
+      "value": "设置"
+    },
+    {
+      "name": "settings_appearance",
+      "value": "外观"
+    },
+    {
+      "name": "settings_accent",
+      "value": "强调色"
+    },
+    {
+      "name": "settings_accent_hint",
+      "value": "用于主操作、链接与选中行"
+    },
+    {
+      "name": "settings_accent_preview",
+      "value": "主按钮预览"
+    },
+    {
+      "name": "settings_terminal",
+      "value": "终端配色"
+    },
+    {
+      "name": "settings_contrast_note",
+      "value": "对比度安全：强调色按钮文字按亮度自动黑/白；终端配色为成对预设，禁止前景与背景同色或对比不足。"
+    },
+    {
+      "name": "btn_back",
+      "value": "返回"
+    },
+    {
+      "name": "theme_mode_light",
+      "value": "浅色"
+    },
+    {
+      "name": "theme_mode_dark",
+      "value": "深色"
+    },
+    {
+      "name": "theme_mode_system",
+      "value": "跟随系统"
     }
   ]
 }

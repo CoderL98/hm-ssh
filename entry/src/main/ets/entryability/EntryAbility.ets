@@ -1,13 +1,20 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { HostStore } from '../services/HostStore';
+import { ThemeStore } from '../services/ThemeStore';
 
 const DOMAIN = 0x0000;
 const TAG = 'HmSSH';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    try {
+      AppStorage.setOrCreate('themeRev', 0);
+    } catch (_e) {
+      // ignore
+    }
+    // 默认跟随系统；ThemeStore.init 会按用户偏好覆盖
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (_e) {
@@ -22,10 +29,13 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
-    HostStore.getInstance().init(this.context).then(() => {
-      hilog.info(DOMAIN, TAG, 'HostStore ready');
+    Promise.all([
+      HostStore.getInstance().init(this.context),
+      ThemeStore.getInstance().init(this.context)
+    ]).then(() => {
+      hilog.info(DOMAIN, TAG, 'HostStore + ThemeStore ready');
     }).catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, 'HostStore init failed %{public}s', JSON.stringify(err));
+      hilog.error(DOMAIN, TAG, 'Store init failed %{public}s', JSON.stringify(err));
     });
 
     windowStage.loadContent('pages/Index', (err) => {
@@ -35,6 +45,11 @@ export default class EntryAbility extends UIAbility {
       }
       hilog.info(DOMAIN, TAG, 'loadContent success');
     });
+  }
+
+  onConfigurationUpdate(newConfig: Configuration): void {
+    hilog.info(DOMAIN, TAG, 'onConfigurationUpdate');
+    ThemeStore.getInstance().onConfigurationChanged(this.context);
   }
 
   onWindowStageDestroy(): void {

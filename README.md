@@ -6,7 +6,7 @@ HarmonyOS NEXT 原生远程管理客户端（ArkTS · Stage 模型）。首期�
 
 ## 视觉语言
 
-UI 采用 **鸿蒙系统设置「纯净风」**：浅灰页底 `#F1F3F5`、白色分组卡片、大标题列表行、灰色协议标签（非高饱和色块）、系统蓝 `#0A59F7` 仅用于链接/主操作。组件克制（细分割线、少胶囊按钮）；深色仅出现在终端/VNC 内容区内部。
+UI 采用 **鸿蒙系统设置「纯净风」**：浅灰页底 `#F1F3F5`、白色分组卡片、大标题列表行、灰色协议标签（非高饱和色块）、强调色（默认系统蓝 `#0A59F7`）仅用于链接/主操作。组件克制（细分割线、少胶囊按钮）；终端内容区使用独立配色方案，VNC 桌面区保持深色占位。
 
 ## 环境要求
 
@@ -37,10 +37,11 @@ hm-ssh/
 ├── entry/
 │   └── src/main/ets/
 │       ├── entryability/      # EntryAbility
-│       ├── pages/             # Index / HostEdit / Terminal / FtpBrowser / VncSession
+│       ├── pages/             # Index / HostEdit / Terminal / FtpBrowser / VncSession / Settings
 │       ├── components/        # HostList* / TerminalView / FtpBrowserView / VncSessionView
 │       ├── models/            # HostConfig（含 protocol）
-│       ├── services/          # HostStore、Ssh/Ftp/Vnc Session（接口 + Mock）
+│       ├── services/          # HostStore、ThemeStore、Ssh/Ftp/Vnc Session（接口 + Mock）
+│       ├── theme/             # ThemeTokens（强调色 / 终端配色 / 对比度）
 │       ├── layout/            # Breakpoint 断点与分栏比例
 │       └── common/            # 路由常量等
 ├── build-profile.json5
@@ -60,6 +61,27 @@ hm-ssh/
   - **VNC**（默认端口 5900）：密码（无用户名必填）
 - 删除确认；持久化：`@kit.ArkData` **preferences**（`HostStore`）
 - 旧数据无 `protocol` 字段时视为 `ssh`
+
+
+### 主题与外观
+
+入口：**主机列表** 右上角「设置」→ `SettingsPage`。
+
+| 项 | 选项 | 说明 |
+| --- | --- | --- |
+| 外观 | 浅色 / 深色 / 跟随系统 | `ThemeStore.themeMode`；经 `ApplicationContext.setColorMode`（API 12）强制或跟随；窗口背景同步 |
+| 强调色 | 系统蓝、绿、橙、紫、粉、灰/中性 | 作用于主操作文字、链接、选中行 tint、协议选中 chip、焦点 |
+| 终端配色 | Classic Dark、Light、Solarized Dark/Light、Nord、Monokai | 成对 bg+fg（+cursor）；应用于 `TerminalView` 内容区与输入框 |
+
+持久化：`preferences`（`ThemeStore`）键 `theme_mode` / `accent_id` / `terminal_scheme_id`。变更通过 `AppStorage.themeRev` 驱动页面刷新。
+
+**对比度安全规则**
+
+- 强调色主按钮文字：按强调色相对亮度自动黑 (`#000`) / 白 (`#FFF`)（阈值 0.55）。
+- 选中行 / 软强调底：强调色低透明叠色（浅色约 10%、深色约 22–28%），徽章仍用中性灰底+灰字，双主题可读。
+- 终端预设：出厂即为连贯 bg+fg；`ensureTerminalContrast` 拒绝 fg==bg 或对比度 &lt; 4.5，不达标则回退 Classic Dark。后续若开放自定义，同样钳制。
+
+令牌解析：`theme/ThemeTokens.ets`；深色资源：`entry/src/main/resources/dark/element/color.json`（纯净风黑底 + `#1C1C1E` 卡片）。
 
 ### SSH 终端（Mock）
 
@@ -127,6 +149,7 @@ hm-ssh/
 - 密码明文 preferences（仅演示）  
 - VNC 无真实像素流；FTP 无真实传输与 TLS  
 - 图标为占位；平板 / PC 多窗口与键鼠快捷键尚未打磨  
+- 终端 ANSI 彩色与完整光标渲染尚未展开（当前 bg/fg/cursor 基础令牌）  
 - 未在本环境执行 DevEco/hvigor 实机编译（请以 DevEco 同步结果为准）
 
 ## 许可

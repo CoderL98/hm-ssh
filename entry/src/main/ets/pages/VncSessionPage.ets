@@ -3,6 +3,8 @@ import { HostConfig } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
 import { MockVncSession, VncFramebufferInfo, VncSessionFactory } from '../services/VncSession';
 import { VncSessionView } from '../components/VncSessionView';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 @Entry
 @Component
@@ -11,6 +13,14 @@ struct VncSessionPage {
   @State connected: boolean = false;
   @State statusMessage: string = '';
   @State framebuffer: VncFramebufferInfo | null = null;
+
+  @StorageLink('themeRev') themeRev: number = 0;
+
+  private accent(): string {
+    void this.themeRev;
+    return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
+  }
+
   private session: MockVncSession = VncSessionFactory.create() as MockVncSession;
   private host: HostConfig | null = null;
 
@@ -49,7 +59,7 @@ struct VncSessionPage {
         Button('< 返回')
           .type(ButtonType.Normal)
           .backgroundColor(Color.Transparent)
-          .fontColor($r('app.color.primary'))
+          .fontColor(this.accent())
           .onClick(() => {
             this.session.disconnect().then(() => {
               router.back();

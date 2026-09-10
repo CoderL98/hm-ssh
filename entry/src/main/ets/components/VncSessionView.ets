@@ -1,4 +1,6 @@
 import { VncFramebufferInfo } from '../services/VncSession';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 /**
  * VNC 会话：设置风顶栏 chrome；仅桌面内容区保持深色占位。
@@ -10,9 +12,15 @@ export struct VncSessionView {
   @Prop statusMessage: string = '';
   @Prop framebuffer: VncFramebufferInfo | null = null;
   @Prop noteVisible: boolean = true;
+  @StorageLink('themeRev') themeRev: number = 0;
   onDisconnect: () => void = () => {};
   onPointer: (x: number, y: number, buttons: number) => void = () => {};
   onKeyStub: () => void = () => {};
+
+  private accent(): string {
+    void this.themeRev;
+    return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
+  }
 
   build() {
     Column() {
@@ -129,7 +137,7 @@ export struct VncSessionView {
         Row({ space: 12 }) {
           Text($r('app.string.vnc_key_stub'))
             .fontSize(14)
-            .fontColor($r('app.color.primary'))
+            .fontColor(this.accent())
             .padding({ left: 4, right: 8, top: 6, bottom: 6 })
             .onClick(() => this.onKeyStub())
           Text($r('app.string.vnc_native_note_short'))

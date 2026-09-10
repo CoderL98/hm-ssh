@@ -1,16 +1,27 @@
 import { HostConfig } from '../models/HostConfig';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 /**
  * 设置列表行：标题 + 副标题、灰色协议标签、右箭头；整行点击连接。
- * 编辑 / 删除通过长按菜单或次要文字，避免胶囊按钮堆叠。
+ * 选中 tint 使用强调色（对比度安全的半透明叠色）。
  */
 @Component
 export struct HostListItem {
   @Prop host: HostConfig = new HostConfig();
   @Prop selected: boolean = false;
+  @StorageLink('themeRev') themeRev: number = 0;
   onConnect: (host: HostConfig) => void = () => {};
   onEdit: (host: HostConfig) => void = () => {};
   onDelete: (host: HostConfig) => void = () => {};
+
+  private rowBg(): ResourceColor {
+    void this.themeRev;
+    if (this.selected) {
+      return ThemeTokens.rowSelected(ThemeStore.getInstance().getAccentId());
+    }
+    return Color.Transparent;
+  }
 
   build() {
     Row() {
@@ -52,7 +63,7 @@ export struct HostListItem {
     }
     .width('100%')
     .padding({ left: 16, right: 12, top: 14, bottom: 14 })
-    .backgroundColor(this.selected ? $r('app.color.row_selected') : Color.Transparent)
+    .backgroundColor(this.rowBg())
     .onClick(() => this.onConnect(this.host))
     .bindContextMenu(this.OverflowMenu, ResponseType.LongPress)
   }

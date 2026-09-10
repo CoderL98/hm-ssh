@@ -3,6 +3,8 @@ import { HostConfig } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
 import { FtpEntry, FtpSessionFactory, MockFtpSession } from '../services/FtpSession';
 import { FtpBrowserView } from '../components/FtpBrowserView';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 @Entry
 @Component
@@ -14,6 +16,14 @@ struct FtpBrowserPage {
   @State statusMessage: string = '';
   @State loading: boolean = false;
   @State errorMessage: string = '';
+
+  @StorageLink('themeRev') themeRev: number = 0;
+
+  private accent(): string {
+    void this.themeRev;
+    return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
+  }
+
   private session: MockFtpSession = FtpSessionFactory.create() as MockFtpSession;
   private host: HostConfig | null = null;
 
@@ -81,7 +91,7 @@ struct FtpBrowserPage {
         Button('< 返回')
           .type(ButtonType.Normal)
           .backgroundColor(Color.Transparent)
-          .fontColor($r('app.color.primary'))
+          .fontColor(this.accent())
           .onClick(() => {
             this.session.disconnect().then(() => {
               router.back();

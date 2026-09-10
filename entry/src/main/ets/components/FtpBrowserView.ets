@@ -1,4 +1,6 @@
 import { FtpEntry } from '../services/FtpSession';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 /**
  * FTP 浏览器：设置纯净风顶栏与工具条；列表为白底设置行。
@@ -12,6 +14,7 @@ export struct FtpBrowserView {
   @Prop statusMessage: string = '';
   @Prop loading: boolean = false;
   @Prop errorMessage: string = '';
+  @StorageLink('themeRev') themeRev: number = 0;
   onNavigate: (entry: FtpEntry) => void = () => {};
   onGoUp: () => void = () => {};
   onRefresh: () => void = () => {};
@@ -19,6 +22,15 @@ export struct FtpBrowserView {
   onUploadStub: () => void = () => {};
   onDisconnect: () => void = () => {};
   onBreadcrumb: (path: string) => void = () => {};
+
+  private accent(): string {
+    void this.themeRev;
+    return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
+  }
+
+  private linkColor(enabled: boolean): ResourceColor {
+    return enabled ? this.accent() : $r('app.color.text_secondary');
+  }
 
   build() {
     Column() {
@@ -52,7 +64,7 @@ export struct FtpBrowserView {
             ForEach(this.breadcrumbParts(), (part: BreadcrumbPart) => {
               Text(part.label)
                 .fontSize(13)
-                .fontColor(part.path === this.cwd ? $r('app.color.primary') : $r('app.color.text_secondary'))
+                .fontColor(part.path === this.cwd ? this.accent() : $r('app.color.text_secondary'))
                 .onClick(() => this.onBreadcrumb(part.path))
               if (!part.isLast) {
                 Text('/')
@@ -69,18 +81,17 @@ export struct FtpBrowserView {
         Row({ space: 16 }) {
           Text($r('app.string.ftp_go_up'))
             .fontSize(14)
-            .fontColor(this.connected && this.cwd !== '/' ? $r('app.color.primary') :
-              $r('app.color.text_secondary'))
+            .fontColor(this.linkColor(this.connected && this.cwd !== '/'))
             .enabled(this.connected && this.cwd !== '/')
             .onClick(() => this.onGoUp())
           Text($r('app.string.ftp_refresh'))
             .fontSize(14)
-            .fontColor(this.connected ? $r('app.color.primary') : $r('app.color.text_secondary'))
+            .fontColor(this.linkColor(this.connected))
             .enabled(this.connected)
             .onClick(() => this.onRefresh())
           Text($r('app.string.ftp_upload'))
             .fontSize(14)
-            .fontColor(this.connected ? $r('app.color.primary') : $r('app.color.text_secondary'))
+            .fontColor(this.linkColor(this.connected))
             .enabled(this.connected)
             .onClick(() => this.onUploadStub())
         }
@@ -107,7 +118,7 @@ export struct FtpBrowserView {
           LoadingProgress()
             .width(40)
             .height(40)
-            .color($r('app.color.primary'))
+            .color(this.accent())
           Text($r('app.string.ftp_loading'))
             .fontSize(14)
             .fontColor($r('app.color.text_secondary'))
@@ -129,7 +140,7 @@ export struct FtpBrowserView {
             .textAlign(TextAlign.Center)
           Text($r('app.string.ftp_refresh'))
             .fontSize(15)
-            .fontColor($r('app.color.primary'))
+            .fontColor(this.accent())
             .margin({ top: 16 })
             .onClick(() => this.onRefresh())
         }
@@ -180,7 +191,7 @@ export struct FtpBrowserView {
                 if (!entry.isDirectory) {
                   Text($r('app.string.ftp_download'))
                     .fontSize(13)
-                    .fontColor($r('app.color.primary'))
+                    .fontColor(this.accent())
                     .padding({ left: 8, right: 4 })
                     .onClick(() => this.onDownload(entry))
                 } else {

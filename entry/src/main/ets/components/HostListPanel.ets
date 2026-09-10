@@ -1,5 +1,9 @@
+import { router } from '@kit.ArkUI';
 import { HostConfig } from '../models/HostConfig';
 import { HostListItem } from './HostListItem';
+import { RouteNames } from '../common/Constants';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 /**
  * 左侧 / 窄屏主机列表：鸿蒙设置纯净风大标题 + 白色分组卡片列表。
@@ -8,10 +12,16 @@ import { HostListItem } from './HostListItem';
 export struct HostListPanel {
   @Prop hosts: HostConfig[] = [];
   @Prop selectedId: string = '';
+  @StorageLink('themeRev') themeRev: number = 0;
   onAdd: () => void = () => {};
   onConnect: (host: HostConfig) => void = () => {};
   onEdit: (host: HostConfig) => void = () => {};
   onDelete: (host: HostConfig) => void = () => {};
+
+  private accent(): string {
+    void this.themeRev;
+    return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
+  }
 
   build() {
     Column() {
@@ -21,11 +31,18 @@ export struct HostListPanel {
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
           .layoutWeight(1)
+        Text($r('app.string.settings_entry'))
+          .fontSize(15)
+          .fontColor(this.accent())
+          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .onClick(() => {
+            router.pushUrl({ url: RouteNames.SETTINGS });
+          })
         Text('+')
           .fontSize(28)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.primary'))
-          .padding({ left: 12, right: 4, top: 4, bottom: 4 })
+          .fontColor(this.accent())
+          .padding({ left: 8, right: 4, top: 4, bottom: 4 })
           .onClick(() => this.onAdd())
       }
       .width('100%')
@@ -45,7 +62,7 @@ export struct HostListPanel {
             .textAlign(TextAlign.Center)
           Text($r('app.string.host_add'))
             .fontSize(16)
-            .fontColor($r('app.color.primary'))
+            .fontColor(this.accent())
             .margin({ top: 20 })
             .onClick(() => this.onAdd())
         }
@@ -54,7 +71,6 @@ export struct HostListPanel {
         .justifyContent(FlexAlign.Center)
         .padding($r('app.float.page_padding'))
       } else {
-        // 白色分组卡片包裹列表行
         Column() {
           List() {
             ForEach(this.hosts, (host: HostConfig, index: number) => {

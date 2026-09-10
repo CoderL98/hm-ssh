@@ -3,6 +3,8 @@ import { HostConfig } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
 import { MockSshSession, SshSessionFactory } from '../services/SshSession';
 import { TerminalView } from '../components/TerminalView';
+import { ThemeStore } from '../services/ThemeStore';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 @Entry
 @Component
@@ -11,6 +13,14 @@ struct TerminalPage {
   @State inputText: string = '';
   @State connected: boolean = false;
   @State title: string = '';
+
+  @StorageLink('themeRev') themeRev: number = 0;
+
+  private accent(): string {
+    void this.themeRev;
+    return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
+  }
+
   private session: MockSshSession = SshSessionFactory.create() as MockSshSession;
   private host: HostConfig | null = null;
 
@@ -49,7 +59,7 @@ struct TerminalPage {
         Button('< 返回')
           .type(ButtonType.Normal)
           .backgroundColor(Color.Transparent)
-          .fontColor($r('app.color.primary'))
+          .fontColor(this.accent())
           .onClick(() => {
             this.session.disconnect().then(() => {
               router.back();

@@ -9,4 +9,5 @@ export class RouteNames {
   static readonly TERMINAL: string = 'pages/TerminalPage';
   static readonly FTP_BROWSER: string = 'pages/FtpBrowserPage';
   static readonly VNC_SESSION: string = 'pages/VncSessionPage';
+  static readonly SETTINGS: string = 'pages/SettingsPage';
 }

@@ -11,7 +11,7 @@ import { FtpBrowserView } from '../components/FtpBrowserView';
 import { VncSessionView } from '../components/VncSessionView';
 import { BreakpointHelper, WindowSizeState } from '../layout/Breakpoint';
 import { RouteNames } from '../common/Constants';
-import { maybePushAfterLocalChange } from '../services/CloudSyncService';
+import { maybePushAfterLocalChange, syncAllCoalesced, CloudSyncServiceFactory } from '../services/CloudSyncService';
 import { AuthStore } from '../services/AuthService';
 import { ThemeTokens } from '../theme/ThemeTokens';
 import { AppSettings } from '../services/AppSettings';
@@ -37,6 +37,8 @@ struct Index {
   @StorageLink('syncToastMsg') @Watch('onSyncToastMsg') syncToastMsg: string = '';
   @State authLoggedIn: boolean = false;
   @State authLabel: string = '';
+  @State syncStatusLabel: string = '';
+  @State syncing: boolean = false;
 
   // SSH
   @State terminalOutput: string = '';
@@ -65,18 +67,26 @@ struct Index {
   private lastPreferNative: boolean = false;
   private windowClass: window.Window | undefined = undefined;
   private sizeSnapshot: WindowSizeState = new WindowSizeState();
+  private sizeDebounceTimer: number = -1;
+  private pendingWidthPx: number = 0;
+  private pendingHeightPx: number = 0;
 
   aboutToAppear(): void {
     this.refreshAuth();
     this.reloadHosts();
     this.consumeSyncToast();
+    void this.refreshSyncStatus();
     // AppSettings 就绪后再按工厂重建，避免 field-init 永久冻在 Mock
     this.lastPreferNative = AppSettings.getInstance().preferNative();
-    this.recreateSessions();
+    // 会话延后到首次分栏连接时再按工厂创建（窄屏各会话页自建）
     this.initWindowListener();
   }
 
   aboutToDisappear(): void {
+    if (this.sizeDebounceTimer >= 0) {
+      clearTimeout(this.sizeDebounceTimer);
+      this.sizeDebounceTimer = -1;
+    }
     this.detachWindowListener();
     this.disconnectAll();
   }
@@ -85,6 +95,7 @@ struct Index {
     this.refreshAuth();
     this.reloadHosts();
     this.consumeSyncToast();
+    void this.refreshSyncStatus();
   }
 
   private reloadHosts(): void {
@@ -98,6 +109,7 @@ struct Index {
 
   onAuthRev(): void {
     this.refreshAuth();
+    void this.refreshSyncStatus();
   }
 
   onAppSettingsRev(): void {
@@ -177,7 +189,7 @@ struct Index {
         this.windowClass = win;
         this.applyWindowSize(win);
         win.on('windowSizeChange', (size: window.Size) => {
-          this.onSizeChanged(size.width, size.height);
+          this.scheduleSizeChanged(size.width, size.height);
         });
       }).catch(() => {
         try {
@@ -452,6 +464,8 @@ ${SshSessionFactory.lastNativeHint()}
       selectedId: this.selectedId,
       authLabel: this.authLabel,
       loggedIn: this.authLoggedIn,
+      syncStatusLabel: this.syncStatusLabel,
+      syncing: this.syncing,
       onAdd: () => {
         this.goAdd();
       },
@@ -466,6 +480,9 @@ ${SshSessionFactory.lastNativeHint()}
       },
       onAccount: () => {
         this.goAccount();
+      },
+      onPullSync: () => {
+        void this.doPullSync();
       }
     })
   }
@@ -478,6 +495,8 @@ ${SshSessionFactory.lastNativeHint()}
         selectedId: this.selectedId,
         authLabel: this.authLabel,
         loggedIn: this.authLoggedIn,
+        syncStatusLabel: this.syncStatusLabel,
+        syncing: this.syncing,
         onAdd: () => {
           this.goAdd();
         },
@@ -492,6 +511,9 @@ ${SshSessionFactory.lastNativeHint()}
         },
         onAccount: () => {
           this.goAccount();
+        },
+        onPullSync: () => {
+          void this.doPullSync();
         }
       })
         .width(this.listPaneWidth)

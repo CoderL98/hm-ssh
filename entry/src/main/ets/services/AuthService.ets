@@ -38,6 +38,7 @@ export interface IAuthService {
   me(): Promise<CloudUser>;
   logout(): Promise<void>;
   refresh?(): Promise<AuthTokens>;
+  changePassword?(currentPassword: string, newPassword: string): Promise<AuthTokens>;
 }
 
 /**
@@ -318,6 +319,21 @@ export class HttpAuthService implements IAuthService {
     await store.clearSession();
   }
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<AuthTokens> {
+    const store = AuthStore.getInstance();
+    const token = await store.ensureFreshAccessToken();
+    if (!token) {
+      throw new Error('未登录');
+    }
+    const raw = await cloudRequest('POST', '/api/v1/me/password', {
+      current_password: currentPassword,
+      new_password: newPassword
+    }, token);
+    const tokens = parseAuthResponse(raw);
+    await store.saveSession(tokens);
+    return tokens;
+  }
+
   private async postAuth(path: string, body: object): Promise<AuthTokens> {
     const raw = await cloudRequestRaw('POST', path, body, null);
     const tokens = parseAuthResponse(raw);
@@ -365,6 +381,20 @@ export class MockAuthService implements IAuthService {
 
   async logout(): Promise<void> {
     await AuthStore.getInstance().clearSession();
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<AuthTokens> {
+    if (!currentPassword || newPassword.length < CloudConfig.MIN_PASSWORD_LEN) {
+      throw new Error(`新密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`);
+    }
+    if (currentPassword === newPassword) {
+      throw new Error('新密码须与当前密码不同');
+    }
+    const u = AuthStore.getInstance().getUser();
+    if (!u) {
+      throw new Error('未登录');
+    }
+    return this.fakeSession(u.email, u.username);
   }
 
   private async fakeSession(email: string, username: string): Promise<AuthTokens> {

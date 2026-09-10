@@ -57,9 +57,9 @@ export class HttpCloudSyncService implements ICloudSyncService {
     const merged = a.indexOf('已从云端合并') >= 0 || b.indexOf('已从云端合并') >= 0 ||
       a.indexOf('已按服务端时间合并') >= 0 || b.indexOf('已应用云端') >= 0;
     if (merged) {
-      return `已从云端合并；${a}；${b}`;
+      return `同步完成（已合并云端变更）：${a}；${b}`;
     }
-    return `${a}；${b}`;
+    return `同步完成：${a}；${b}`;
   }
 
   async getLastSyncAt(): Promise<number> {
@@ -99,7 +99,7 @@ export class HttpCloudSyncService implements ICloudSyncService {
       await this.setMeta(KEY_HOSTS_TS, serverTs);
       await this.pushHostsInternal(token);
       if (localDirty) {
-        return `主机：已从云端合并（${merged.length} 条）`;
+        return `主机：云端较新，已按条目时间合并（${merged.length} 条；同 id 取较新）`;
       }
       return `主机：已按服务端时间合并（${merged.length} 条）`;
     }
@@ -295,24 +295,98 @@ export class CloudSyncServiceFactory {
   }
 }
 
+/** 同步协调：单飞 syncAll + 本地变更推送防抖，避免风暴 */
+class SyncCoordinator {
+  private syncInFlight: Promise<string> | null = null;
+  private pushTimerHosts: number = -1;
+  private pushTimerSettings: number = -1;
+  private pendingHosts: boolean = false;
+  private pendingSettings: boolean = false;
+  private static readonly PUSH_DEBOUNCE_MS: number = 800;
+
+  async syncAllCoalesced(): Promise<string> {
+    if (this.syncInFlight) {
+      return this.syncInFlight;
+    }
+    const svc = CloudSyncServiceFactory.create();
+    this.syncInFlight = (async () => {
+      try {
+        return await svc.syncAll();
+      } finally {
+        this.syncInFlight = null;
+      }
+    })();
+    return this.syncInFlight;
+  }
+
+  schedulePush(kind: 'hosts' | 'settings'): void {
+    const auth = AuthStore.getInstance();
+    if (!auth.isLoggedIn()) {
+      return;
+    }
+    if (kind === 'hosts') {
+      this.pendingHosts = true;
+      if (this.pushTimerHosts >= 0) {
+        clearTimeout(this.pushTimerHosts);
+      }
+      this.pushTimerHosts = setTimeout(() => {
+        this.pushTimerHosts = -1;
+        void this.flushPush('hosts');
+      }, SyncCoordinator.PUSH_DEBOUNCE_MS) as number;
+    } else {
+      this.pendingSettings = true;
+      if (this.pushTimerSettings >= 0) {
+        clearTimeout(this.pushTimerSettings);
+      }
+      this.pushTimerSettings = setTimeout(() => {
+        this.pushTimerSettings = -1;
+        void this.flushPush('settings');
+      }, SyncCoordinator.PUSH_DEBOUNCE_MS) as number;
+    }
+  }
+
+  private async flushPush(kind: 'hosts' | 'settings'): Promise<void> {
+    if (kind === 'hosts') {
+      if (!this.pendingHosts) {
+        return;
+      }
+      this.pendingHosts = false;
+    } else {
+      if (!this.pendingSettings) {
+        return;
+      }
+      this.pendingSettings = false;
+    }
+    // 若全量同步进行中，结束后再推一次（合并到下一次 debounce 即可）
+    if (this.syncInFlight) {
+      this.schedulePush(kind);
+      return;
+    }
+    try {
+      const svc = CloudSyncServiceFactory.create();
+      if (kind === 'hosts') {
+        await svc.pushHosts();
+      } else {
+        await svc.pushSettings();
+      }
+    } catch (_e) {
+      // 后台同步失败不影响本地保存
+    }
+  }
+}
+
+const SYNC_COORD = new SyncCoordinator();
+
+/** 单飞全量同步（登录后 / 下拉刷新 / 帐号页共用） */
+export async function syncAllCoalesced(): Promise<string> {
+  return SYNC_COORD.syncAllCoalesced();
+}
+
 /**
- * 登录态下本地变更后的后台推送（失败静默，不打断 UI）。
+ * 登录态下本地变更后的后台推送（防抖；失败静默，不打断 UI）。
  */
 export async function maybePushAfterLocalChange(kind: 'hosts' | 'settings'): Promise<void> {
-  const auth = AuthStore.getInstance();
-  if (!auth.isLoggedIn()) {
-    return;
-  }
-  try {
-    const svc = CloudSyncServiceFactory.create();
-    if (kind === 'hosts') {
-      await svc.pushHosts();
-    } else {
-      await svc.pushSettings();
-    }
-  } catch (_e) {
-    // 后台同步失败不影响本地保存
-  }
+  SYNC_COORD.schedulePush(kind);
 }
 
 /** 按 host.id 合并，updatedAt 较大者胜出；云端空机密时保留本地 password/privateKey */

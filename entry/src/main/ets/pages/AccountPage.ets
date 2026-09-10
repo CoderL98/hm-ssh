@@ -2,7 +2,7 @@ import { promptAction, router } from '@kit.ArkUI';
 import { ThemeStore } from '../services/ThemeStore';
 import { ThemeTokens } from '../theme/ThemeTokens';
 import { AuthServiceFactory, AuthStore } from '../services/AuthService';
-import { CloudSyncServiceFactory } from '../services/CloudSyncService';
+import { CloudSyncServiceFactory, syncAllCoalesced } from '../services/CloudSyncService';
 import { CloudConfig } from '../common/Constants';
 import { AppSettings } from '../services/AppSettings';
 import { HostStore } from '../services/HostStore';
@@ -32,6 +32,8 @@ struct AccountPage {
   @State vaultPassphrase: string = '';
   @State rememberVault: boolean = true;
   @State huksStatus: string = '';
+  @State currentPassword: string = '';
+  @State newPassword: string = '';
 
   aboutToAppear(): void {
     this.hydrateFromStores();
@@ -221,7 +223,7 @@ struct AccountPage {
       this.refreshSession();
       this.toast(this.mode === 'register' ? '注册并登录成功' : '登录成功');
       try {
-        const msg = await CloudSyncServiceFactory.create().syncAll();
+        const msg = await syncAllCoalesced();
         this.bumpHostsUi();
         this.statusText = msg;
         if (msg.indexOf('已从云端合并') >= 0) {
@@ -234,6 +236,45 @@ struct AccountPage {
         const m = this.formatAuthError(syncErr as Error);
         this.statusText = `已登录，同步跳过：${m}`;
       }
+    } catch (e) {
+      const m = this.formatAuthError(e as Error);
+      this.toast(m);
+      this.statusText = m;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+
+  private async doChangePassword(): Promise<void> {
+    if (this.busy) {
+      return;
+    }
+    if (this.currentPassword.length < 1) {
+      this.toast('请填写当前密码');
+      return;
+    }
+    if (this.newPassword.length < CloudConfig.MIN_PASSWORD_LEN) {
+      this.toast(`新密码至少 ${CloudConfig.MIN_PASSWORD_LEN} 位`);
+      return;
+    }
+    if (this.currentPassword === this.newPassword) {
+      this.toast('新密码须与当前密码不同');
+      return;
+    }
+    this.busy = true;
+    this.statusText = '';
+    try {
+      const auth = AuthServiceFactory.create();
+      if (!auth.changePassword) {
+        this.toast('当前后端不支持改密');
+        return;
+      }
+      await auth.changePassword(this.currentPassword, this.newPassword);
+      this.currentPassword = '';
+      this.newPassword = '';
+      this.toast('密码已修改');
+      this.statusText = '密码已修改，会话已更新';
     } catch (e) {
       const m = this.formatAuthError(e as Error);
       this.toast(m);
@@ -271,7 +312,7 @@ struct AccountPage {
       if (!this.useMock) {
         await AuthStore.getInstance().setBaseUrl(this.baseUrl);
       }
-      const msg = await CloudSyncServiceFactory.create().syncAll();
+      const msg = await syncAllCoalesced();
       this.bumpHostsUi();
       this.statusText = msg;
       if (msg.indexOf('已从云端合并') >= 0) {
@@ -451,6 +492,37 @@ struct AccountPage {
               .opacity(this.busy ? 0.5 : 1)
               .onClick(() => {
                 this.doSync();
+              })
+              Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+              Text($r('app.string.account_change_password'))
+                .fontSize(13)
+                .fontColor(this.textSecondary())
+                .width('100%')
+                .padding({ left: 16, right: 16, top: 12, bottom: 4 })
+              Text($r('app.string.account_change_password_hint'))
+                .fontSize(12)
+                .fontColor(this.textSecondary())
+                .width('100%')
+                .padding({ left: 16, right: 16, bottom: 8 })
+              this.field($r('app.string.account_current_password'), this.currentPassword, (v: string) => {
+                this.currentPassword = v;
+              }, true)
+              Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+              this.field($r('app.string.account_new_password'), this.newPassword, (v: string) => {
+                this.newPassword = v;
+              }, true)
+              Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+              Row() {
+                Text(this.busy ? $r('app.string.account_busy') : $r('app.string.account_change_password_btn'))
+                  .fontSize(16)
+                  .fontColor(this.accent())
+                  .layoutWeight(1)
+              }
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+              .opacity(this.busy ? 0.5 : 1)
+              .onClick(() => {
+                this.doChangePassword();
               })
               Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
               Row() {

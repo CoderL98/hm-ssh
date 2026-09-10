@@ -451,6 +451,50 @@
     {
       "name": "account_logout_done",
       "value": "已退出登录"
+    },
+    {
+      "name": "account_change_password",
+      "value": "修改密码"
+    },
+    {
+      "name": "account_current_password",
+      "value": "当前密码"
+    },
+    {
+      "name": "account_new_password",
+      "value": "新密码"
+    },
+    {
+      "name": "account_change_password_btn",
+      "value": "确认修改"
+    },
+    {
+      "name": "account_change_password_ok",
+      "value": "密码已修改"
+    },
+    {
+      "name": "account_change_password_hint",
+      "value": "修改成功后将签发新令牌；请牢记新密码。"
+    },
+    {
+      "name": "host_list_sync_status",
+      "value": "同步"
+    },
+    {
+      "name": "host_list_syncing",
+      "value": "同步中…"
+    },
+    {
+      "name": "host_list_pull_sync",
+      "value": "下拉同步"
+    },
+    {
+      "name": "host_list_offline_hint",
+      "value": "未登录 · 仅本机"
+    },
+    {
+      "name": "host_list_last_sync_prefix",
+      "value": "上次同步："
     }
   ]
 }

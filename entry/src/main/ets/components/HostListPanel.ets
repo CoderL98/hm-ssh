@@ -9,6 +9,7 @@ import { ThemeTokens } from '../theme/ThemeTokens';
  * 左侧 / 窄屏主机列表：鸿蒙设置纯净风大标题 + 白色分组卡片列表。
  * 标题/链接/强调色走 ThemeTokens（与 Settings 一致，不破坏纯净风）。
  * 右上角：「登录」/ 用户名 → 帐号页；设置；添加。
+ * 已登录时可下拉刷新触发云同步。
  */
 @Component
 export struct HostListPanel {
@@ -17,12 +18,17 @@ export struct HostListPanel {
   /** 未登录显示「登录」；已登录显示用户名 */
   @Prop authLabel: string = '';
   @Prop loggedIn: boolean = false;
+  /** 同步状态行（如「上次同步：…」/「同步中…」） */
+  @Prop syncStatusLabel: string = '';
+  @Prop syncing: boolean = false;
   @StorageLink('themeRev') themeRev: number = 0;
+  @State refreshing: boolean = false;
   onAdd: () => void = () => {};
   onConnect: (host: HostConfig) => void = () => {};
   onEdit: (host: HostConfig) => void = () => {};
   onDelete: (host: HostConfig) => void = () => {};
   onAccount: () => void = () => {};
+  onPullSync: () => void = () => {};
 
   private accent(): string {
     void this.themeRev;
@@ -92,9 +98,37 @@ export struct HostListPanel {
         left: $r('app.float.page_padding'),
         right: $r('app.float.page_padding'),
         top: 16,
-        bottom: 8
+        bottom: 4
       })
       .alignItems(VerticalAlign.Center)
+
+      if (this.loggedIn) {
+        Text(this.syncing ? $r('app.string.host_list_syncing') :
+          (this.syncStatusLabel.length > 0 ? this.syncStatusLabel : $r('app.string.account_never_synced')))
+          .fontSize(12)
+          .fontColor(this.textSecondary())
+          .width('100%')
+          .padding({
+            left: $r('app.float.page_padding'),
+            right: $r('app.float.page_padding'),
+            bottom: 8
+          })
+          .onClick(() => {
+            if (!this.syncing) {
+              this.onPullSync();
+            }
+          })
+      } else {
+        Text($r('app.string.host_list_offline_hint'))
+          .fontSize(12)
+          .fontColor(this.textSecondary())
+          .width('100%')
+          .padding({
+            left: $r('app.float.page_padding'),
+            right: $r('app.float.page_padding'),
+            bottom: 8
+          })
+      }
 
       if (this.hosts.length === 0) {
         Column() {
@@ -113,6 +147,12 @@ export struct HostListPanel {
               .fontColor(this.accent())
               .margin({ top: 12 })
               .onClick(() => this.onAccount())
+          } else if (!this.syncing) {
+            Text($r('app.string.account_sync_now'))
+              .fontSize(15)
+              .fontColor(this.accent())
+              .margin({ top: 12 })
+              .onClick(() => this.onPullSync())
           }
         }
         .width('100%')
@@ -120,7 +160,7 @@ export struct HostListPanel {
         .justifyContent(FlexAlign.Center)
         .padding($r('app.float.page_padding'))
       } else {
-        Column() {
+        Refresh({ refreshing: $$this.refreshing }) {
           List() {
             ForEach(this.hosts, (host: HostConfig, index: number) => {
               ListItem() {
@@ -140,15 +180,15 @@ export struct HostListPanel {
                   }
                 }
               }
-            }, (host: HostConfig) => host.id)
+            }, (host: HostConfig) => `${host.id}_${host.updatedAt}`)
           }
           .width('100%')
-          .layoutWeight(1)
+          .height('100%')
           .scrollBar(BarState.Off)
           .divider({ strokeWidth: 0 })
         }
-        .width('100%')
         .layoutWeight(1)
+        .width('100%')
         .margin({
           left: $r('app.float.page_padding'),
           right: $r('app.float.page_padding'),
@@ -157,6 +197,18 @@ export struct HostListPanel {
         .backgroundColor(this.surfaceCard())
         .borderRadius($r('app.float.card_radius'))
         .clip(true)
+        .onRefreshing(() => {
+          if (!this.loggedIn) {
+            this.refreshing = false;
+            return;
+          }
+          this.refreshing = true;
+          this.onPullSync();
+          // Index 会在同步结束后通过 syncing→false 驱动；此处兜底结束刷新动画
+          setTimeout(() => {
+            this.refreshing = false;
+          }, 1200);
+        })
       }
     }
     .width('100%')

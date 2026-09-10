@@ -4,7 +4,7 @@ import { window } from '@kit.ArkUI';
 import { HostStore } from '../services/HostStore';
 import { ThemeStore } from '../services/ThemeStore';
 import { AuthStore } from '../services/AuthService';
-import { CloudSyncServiceFactory } from '../services/CloudSyncService';
+import { CloudSyncServiceFactory, syncAllCoalesced } from '../services/CloudSyncService';
 import { AppSettings } from '../services/AppSettings';
 import { HuksCrypto } from '../services/HuksCrypto';
 
@@ -79,7 +79,7 @@ export default class EntryAbility extends UIAbility {
 
   private async autoSyncOnLaunch(): Promise<void> {
     try {
-      const msg = await CloudSyncServiceFactory.create().syncAll();
+      const msg = await syncAllCoalesced();
       HostStore.getInstance().notifyChanged();
       hilog.info(DOMAIN, TAG, 'Launch sync OK: %{public}s', msg);
       try {

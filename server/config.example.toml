@@ -7,6 +7,7 @@ jwt_access_ttl_secs = 86400
 jwt_refresh_ttl_secs = 604800
 # redis_url = "redis://127.0.0.1:6379"
 cors_origins = "*"
+# For admin UI without *: "http://localhost:5173,http://127.0.0.1:5173"
 # auth_rate_limit_per_min = 20
 # admin_email = "admin@example.com"
 # admin_password = "change-me-admin-pass"

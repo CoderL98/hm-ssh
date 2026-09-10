@@ -323,8 +323,12 @@ export class MockFtpSession implements IFtpSession {
 
 export class FtpSessionFactory {
   static create(): IFtpSession {
-    if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
-      return new NativeFtpSession();
+    try {
+      if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
+        return new NativeFtpSession();
+      }
+    } catch (_e) {
+      // require/.so 缺失或构造失败 → Mock，避免整页崩溃
     }
     return new MockFtpSession();
   }

@@ -88,7 +88,7 @@ docker run --rm -p 8080:8080 \
 - 每个资源（hosts / settings）存一份 JSON + 服务端 `updated_at`（Unix ms）。
 - **Last-write-wins**：客户端以服务端时间戳为准；`PUT` 会覆盖并更新 `updated_at`。
 - 客户端合并策略见仓库根 README「云同步」：按条目 `updatedAt` 取较新者，再推回服务端。
-- **Secrets**：`PUT /sync/hosts` 会清空每条主机的 `password` / `privateKey`（及 `private_key`）后再落库；GET 同样保证不回传明文机密。
+- **Secrets**：`PUT /sync/hosts` 会清空每条主机的 `password` / `privateKey`（及 `private_key`）后再落库；**保留**客户端保险柜字段 `passwordEnc` / `privateKeyEnc`。GET 同样保证不回传明文机密。
 
 ## Rate limiting / 速率限制
 

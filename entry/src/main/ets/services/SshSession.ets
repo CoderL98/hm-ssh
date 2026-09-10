@@ -102,8 +102,12 @@ export class MockSshSession implements ISshSession {
 /** 工厂：preferNative 且 .so 可用 → Native，否则 Mock */
 export class SshSessionFactory {
   static create(): ISshSession {
-    if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
-      return new NativeSshSession();
+    try {
+      if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
+        return new NativeSshSession();
+      }
+    } catch (_e) {
+      // require/.so 缺失或构造失败 → Mock，避免整页崩溃
     }
     return new MockSshSession();
   }

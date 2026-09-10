@@ -86,11 +86,27 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn build_cors(origins: &[String]) -> CorsLayer {
+    // Admin UI (Vite) typically runs at http://localhost:5173 — include it in
+    // CORS_ORIGINS when not using *. Bearer token auth does not need credentials.
+    use axum::http::{header, Method};
+    let headers = [
+        header::AUTHORIZATION,
+        header::CONTENT_TYPE,
+        header::ACCEPT,
+    ];
+    let methods = [
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::PATCH,
+        Method::DELETE,
+        Method::OPTIONS,
+    ];
     if origins.len() == 1 && origins[0] == "*" {
         return CorsLayer::new()
             .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any);
+            .allow_methods(methods)
+            .allow_headers(headers);
     }
     let parsed: Vec<_> = origins
         .iter()
@@ -98,8 +114,8 @@ fn build_cors(origins: &[String]) -> CorsLayer {
         .collect();
     CorsLayer::new()
         .allow_origin(parsed)
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_methods(methods)
+        .allow_headers(headers)
 }
 
 async fn shutdown_signal() {

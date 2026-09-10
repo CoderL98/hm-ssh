@@ -5,6 +5,7 @@ pub mod me;
 pub mod sync;
 
 use crate::auth::jwt::Claims;
+use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::extract::FromRequestParts;
@@ -34,6 +35,14 @@ impl FromRequestParts<AppState> for AuthUser {
         let claims = state.jwt.decode_access(token)?;
         if auth::is_revoked(state, &claims.sub, claims.iat).await {
             return Err(AppError::Unauthorized("session revoked".into()));
+        }
+        // Defense in depth: disabled/deleted stay blocked after cache restart
+        match db::find_user_by_id(&state.pool, &claims.sub).await? {
+            Some(user) if user.deleted_at.is_some() || user.disabled => {
+                return Err(AppError::Unauthorized("account disabled".into()));
+            }
+            None => return Err(AppError::Unauthorized("user not found".into())),
+            Some(_) => {}
         }
         Ok(AuthUser(claims))
     }

@@ -37,18 +37,20 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
-    // 初始化顺序：AppSettings/HUKS → Theme + Auth + CloudSync → HostStore → 登录态后台 syncAll
-    this.bootstrapStores().catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, 'Store init failed %{public}s', JSON.stringify(err));
-    });
-
-    windowStage.loadContent('pages/Index', (err) => {
-      if (err.code) {
-        hilog.error(DOMAIN, TAG, 'loadContent failed %{public}s', JSON.stringify(err));
-        return;
-      }
-      hilog.info(DOMAIN, TAG, 'loadContent success');
-    });
+    // 先完成 stores，再 loadContent，避免 Index/Account 在 AuthStore/HostStore 未就绪时读空状态
+    this.bootstrapStores()
+      .catch((err: Error) => {
+        hilog.error(DOMAIN, TAG, 'Store init failed %{public}s', JSON.stringify(err));
+      })
+      .then(() => {
+        windowStage.loadContent('pages/Index', (err) => {
+          if (err.code) {
+            hilog.error(DOMAIN, TAG, 'loadContent failed %{public}s', JSON.stringify(err));
+            return;
+          }
+          hilog.info(DOMAIN, TAG, 'loadContent success');
+        });
+      });
   }
 
   private async bootstrapStores(): Promise<void> {

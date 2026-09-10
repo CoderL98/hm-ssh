@@ -27,8 +27,8 @@ struct SettingsPage {
   @State mode: ThemeMode = 'system';
   @State accentId: AccentId = 'blue';
   @State schemeId: TerminalSchemeId = 'classic_dark';
-  @StorageLink('authRev') authRev: number = 0;
-  @StorageLink('appSettingsRev') appSettingsRev: number = 0;
+  @StorageLink('authRev') @Watch('onAuthRev') authRev: number = 0;
+  @StorageLink('appSettingsRev') @Watch('onAppSettingsRev') appSettingsRev: number = 0;
   @State accountSubtitle: string = '';
   @State useNative: boolean = false;
   @State nativeStatus: string = '';
@@ -36,6 +36,14 @@ struct SettingsPage {
   aboutToAppear(): void {
     this.syncFromStore();
     this.refreshAccount();
+    this.refreshNative();
+  }
+
+  onAuthRev(): void {
+    this.refreshAccount();
+  }
+
+  onAppSettingsRev(): void {
     this.refreshNative();
   }
 

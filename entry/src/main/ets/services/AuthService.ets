@@ -21,6 +21,8 @@ export interface CloudUser {
   email: string;
   username: string;
   created_at: number;
+  /** 服务端 snake_case；手机端可不使用 */
+  is_admin?: boolean;
 }
 
 export interface AuthTokens {
@@ -93,6 +95,10 @@ export class AuthStore {
     }
     this.ready = true;
     this.publish();
+  }
+
+  isReady(): boolean {
+    return this.ready;
   }
 
   isLoggedIn(): boolean {
@@ -398,7 +404,8 @@ function parseAuthResponse(raw: string): AuthTokens {
       id: `${userObj['id']}`,
       email: `${userObj['email']}`,
       username: `${userObj['username']}`,
-      created_at: Number(userObj['created_at'] ?? 0)
+      created_at: Number(userObj['created_at'] ?? 0),
+      is_admin: Boolean(userObj['is_admin'] ?? false)
     }
   };
 }

@@ -14,7 +14,8 @@ import { HostStore } from '../services/HostStore';
 @Component
 struct AccountPage {
   @StorageLink('themeRev') themeRev: number = 0;
-  @StorageLink('authRev') authRev: number = 0;
+  @StorageLink('authRev') @Watch('onAuthRev') authRev: number = 0;
+  @StorageLink('appSettingsRev') @Watch('onAppSettingsRev') appSettingsRev: number = 0;
   @State mode: string = 'login'; // login | register
   @State email: string = '';
   @State username: string = '';
@@ -32,6 +33,21 @@ struct AccountPage {
   @State huksStatus: string = '';
 
   aboutToAppear(): void {
+    this.hydrateFromStores();
+  }
+
+  onAuthRev(): void {
+    this.hydrateFromStores();
+  }
+
+  onAppSettingsRev(): void {
+    void this.appSettingsRev;
+    this.cloudVault = AppSettings.getInstance().isCloudVaultEnabled();
+    this.vaultPassphrase = AppSettings.getInstance().getVaultPassphrase();
+  }
+
+  /** AuthStore/AppSettings 就绪后（含冷启动竞态）刷新表单与会话展示 */
+  private hydrateFromStores(): void {
     const store = AuthStore.getInstance();
     this.baseUrl = store.getBaseUrl();
     this.useMock = store.isUseMock();

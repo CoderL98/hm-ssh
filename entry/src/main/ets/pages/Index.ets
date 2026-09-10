@@ -13,6 +13,7 @@ import { BreakpointHelper, WindowSizeState } from '../layout/Breakpoint';
 import { RouteNames } from '../common/Constants';
 import { maybePushAfterLocalChange } from '../services/CloudSyncService';
 import { AuthStore } from '../services/AuthService';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 /**
  * 主页：窄屏栈式导航；宽屏主从分栏。
@@ -28,6 +29,7 @@ struct Index {
   @State widthVp: number = 360;
   @State heightVp: number = 780;
   @State listPaneWidth: string = '34%';
+  @StorageLink('themeRev') themeRev: number = 0;
   @StorageLink('hostRev') @Watch('onHostRev') hostRev: number = 0;
   @StorageLink('authRev') @Watch('onAuthRev') authRev: number = 0;
   @StorageLink('syncToastMsg') @Watch('onSyncToastMsg') syncToastMsg: string = '';
@@ -453,7 +455,7 @@ ${SshSessionFactory.lastNativeHint()}
 
       Divider()
         .vertical(true)
-        .color($r('app.color.divider'))
+        .color(this.splitDivider())
         .strokeWidth(1)
 
       if (this.hasActiveSession()) {
@@ -462,12 +464,12 @@ ${SshSessionFactory.lastNativeHint()}
         Column() {
           Text($r('app.string.terminal_select_host'))
             .fontSize(16)
-            .fontColor($r('app.color.text_secondary'))
+            .fontColor(this.splitHintColor())
         }
         .layoutWeight(1)
         .height('100%')
         .justifyContent(FlexAlign.Center)
-        .backgroundColor($r('app.color.page_background'))
+        .backgroundColor(this.splitPaneBg())
       }
     }
     .width('100%')

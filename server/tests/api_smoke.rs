@@ -297,3 +297,57 @@ async fn admin_stats_requires_admin_and_lists_users() {
     assert!(body.get("hosts").is_some());
     assert!(body["hosts"].get("payload").is_none());
 }
+
+#[tokio::test]
+async fn disabled_user_cannot_login_or_use_token() {
+    let state = test_state(100).await;
+    let pool = state.pool.clone();
+    let router = app(state);
+
+    let reg = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/register")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"email":"dis@test.com","username":"disabled1","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, auth) = body_json(router.clone().oneshot(reg).await.unwrap()).await;
+    assert_eq!(status, StatusCode::OK, "{auth}");
+    let user_id = auth["user"]["id"].as_str().unwrap().to_string();
+    let token = auth["access_token"].as_str().unwrap().to_string();
+
+    db::set_disabled(&pool, &user_id, true)
+        .await
+        .expect("disable");
+
+    // Login rejected
+    let login = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/login")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"login":"dis@test.com","password":"secret123"}"#,
+        ))
+        .unwrap();
+    let (status, body) = body_json(router.clone().oneshot(login).await.unwrap()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase()
+            .contains("disable"),
+        "{body}"
+    );
+
+    // Pre-disable token also rejected on authenticated routes (DB check)
+    let me = Request::builder()
+        .method("GET")
+        .uri("/api/v1/me")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = body_json(router.oneshot(me).await.unwrap()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+}

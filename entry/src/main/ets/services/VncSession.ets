@@ -99,8 +99,12 @@ export class MockVncSession implements IVncSession {
 
 export class VncSessionFactory {
   static create(): IVncSession {
-    if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
-      return new NativeVncSession();
+    try {
+      if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
+        return new NativeVncSession();
+      }
+    } catch (_e) {
+      // require/.so 缺失或构造失败 → Mock，避免整页崩溃
     }
     return new MockVncSession();
   }

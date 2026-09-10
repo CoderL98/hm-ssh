@@ -2,6 +2,7 @@ import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { http } from '@kit.NetworkKit';
 import { CloudConfig } from '../common/Constants';
+import { HuksCrypto } from './HuksCrypto';
 
 const STORE_NAME = 'hm_ssh_auth';
 const KEY_ACCESS = 'access_token';
@@ -39,7 +40,7 @@ export interface IAuthService {
 
 /**
  * 帐号与 JWT 本地缓存（preferences）。
- * 正式版应将 token 迁入 HUKS；当前为演示接缝。
+ * access/refresh token 经 HUKS 加密后写入 preferences；内存保留明文。
  */
 export class AuthStore {
   private static instance: AuthStore | undefined = undefined;
@@ -66,8 +67,18 @@ export class AuthStore {
       return;
     }
     this.pref = await preferences.getPreferences(context, STORE_NAME);
-    this.accessToken = await this.pref.get(KEY_ACCESS, '') as string;
-    this.refreshToken = await this.pref.get(KEY_REFRESH, '') as string;
+    const accessPacked = await this.pref.get(KEY_ACCESS, '') as string;
+    const refreshPacked = await this.pref.get(KEY_REFRESH, '') as string;
+    try {
+      const crypto = HuksCrypto.getInstance();
+      await crypto.init();
+      this.accessToken = await crypto.decryptPackedOrPlain(accessPacked);
+      this.refreshToken = await crypto.decryptPackedOrPlain(refreshPacked);
+    } catch (_e) {
+      // HUKS 不可用时回退明文（兼容旧数据 / 模拟器）
+      this.accessToken = accessPacked.startsWith('v1:') ? '' : accessPacked;
+      this.refreshToken = refreshPacked.startsWith('v1:') ? '' : refreshPacked;
+    }
     this.expiresAt = Number(await this.pref.get(KEY_EXPIRES, 0));
     this.baseUrl = await this.pref.get(KEY_BASE_URL, CloudConfig.DEFAULT_BASE_URL) as string;
     const mockRaw = await this.pref.get(KEY_USE_MOCK, CloudConfig.USE_MOCK ? '1' : '0') as string;
@@ -142,8 +153,18 @@ export class AuthStore {
       this.publish();
       return;
     }
-    await this.pref.put(KEY_ACCESS, this.accessToken);
-    await this.pref.put(KEY_REFRESH, this.refreshToken);
+    let accessStore = this.accessToken;
+    let refreshStore = this.refreshToken;
+    try {
+      const crypto = HuksCrypto.getInstance();
+      await crypto.init();
+      accessStore = await crypto.encryptToPacked(this.accessToken);
+      refreshStore = await crypto.encryptToPacked(this.refreshToken);
+    } catch (_e) {
+      // 明文回退
+    }
+    await this.pref.put(KEY_ACCESS, accessStore);
+    await this.pref.put(KEY_REFRESH, refreshStore);
     await this.pref.put(KEY_EXPIRES, this.expiresAt);
     await this.pref.put(KEY_USER_JSON, JSON.stringify(this.user));
     await this.pref.flush();

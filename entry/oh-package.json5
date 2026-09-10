@@ -5,5 +5,7 @@
   "main": "",
   "author": "CoderL98",
   "license": "MIT",
-  "dependencies": {}
+  "dependencies": {
+    "libhmssh_native.so": "file:./src/main/cpp/types/libhmssh_native"
+  }
 }

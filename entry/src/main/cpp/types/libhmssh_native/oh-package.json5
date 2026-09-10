@@ -1,0 +1,9 @@
+{
+  "name": "libhmssh_native.so",
+  "version": "1.0.0",
+  "description": "Type definitions for hmssh_native NAPI module",
+  "main": "",
+  "author": "CoderL98",
+  "license": "MIT",
+  "types": "./Index.d.ts"
+}

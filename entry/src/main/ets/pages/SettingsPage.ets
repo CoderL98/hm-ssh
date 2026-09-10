@@ -1,6 +1,8 @@
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 import { RouteNames } from '../common/Constants';
 import { AuthStore } from '../services/AuthService';
+import { AppSettings } from '../services/AppSettings';
+import { isNativeModulePresent, getNativeLoadError } from '../services/native/NativeBridge';
 import { ThemeStore } from '../services/ThemeStore';
 import { maybePushAfterLocalChange } from '../services/CloudSyncService';
 import {
@@ -26,11 +28,26 @@ struct SettingsPage {
   @State accentId: AccentId = 'blue';
   @State schemeId: TerminalSchemeId = 'classic_dark';
   @StorageLink('authRev') authRev: number = 0;
+  @StorageLink('appSettingsRev') appSettingsRev: number = 0;
   @State accountSubtitle: string = '';
+  @State useNative: boolean = false;
+  @State nativeStatus: string = '';
 
   aboutToAppear(): void {
     this.syncFromStore();
     this.refreshAccount();
+    this.refreshNative();
+  }
+
+  private refreshNative(): void {
+    void this.appSettingsRev;
+    this.useNative = AppSettings.getInstance().preferNative();
+    if (isNativeModulePresent()) {
+      this.nativeStatus = 'libhmssh_native.so 已加载';
+    } else {
+      const err = getNativeLoadError();
+      this.nativeStatus = err ? `未加载：${err}` : '未加载（将使用 Mock）';
+    }
   }
 
   private refreshAccount(): void {
@@ -195,6 +212,48 @@ struct SettingsPage {
                 }
               }
             }, (scheme: TerminalScheme) => scheme.id)
+          }
+          .width('100%')
+          .backgroundColor(this.surfaceCard())
+          .borderRadius($r('app.float.card_radius'))
+          .clip(true)
+
+          this.sectionTitle($r('app.string.settings_protocol'))
+          Column() {
+            Text($r('app.string.settings_use_native_hint'))
+              .fontSize(13)
+              .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+            Row() {
+              Text($r('app.string.settings_use_native'))
+                .fontSize(16)
+                .fontColor(this.textPrimary())
+                .layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.useNative })
+                .selectedColor(this.accent())
+                .onChange((isOn: boolean) => {
+                  AppSettings.getInstance().setPreferNative(isOn).then(() => {
+                    this.useNative = isOn;
+                    this.refreshNative();
+                    if (isOn && !isNativeModulePresent()) {
+                      try {
+                        promptAction.showToast({ message: '原生模块不可用，连接时将回退 Mock', duration: 2500 });
+                      } catch (_e) {
+                        // ignore
+                      }
+                    }
+                  });
+                })
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+            Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+            Text(this.nativeStatus)
+              .fontSize(12)
+              .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 8, bottom: 12 })
           }
           .width('100%')
           .backgroundColor(this.surfaceCard())

@@ -5,6 +5,8 @@ import { HostStore } from '../services/HostStore';
 import { ThemeStore } from '../services/ThemeStore';
 import { AuthStore } from '../services/AuthService';
 import { CloudSyncServiceFactory } from '../services/CloudSyncService';
+import { AppSettings } from '../services/AppSettings';
+import { HuksCrypto } from '../services/HuksCrypto';
 
 const DOMAIN = 0x0000;
 const TAG = 'HmSSH';
@@ -14,6 +16,7 @@ export default class EntryAbility extends UIAbility {
     try {
       AppStorage.setOrCreate('themeRev', 0);
       AppStorage.setOrCreate('authRev', 0);
+      AppStorage.setOrCreate('appSettingsRev', 0);
     } catch (_e) {
       // ignore
     }
@@ -33,12 +36,17 @@ export default class EntryAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
     Promise.all([
-      HostStore.getInstance().init(this.context),
+      AppSettings.getInstance().init(this.context),
+      HuksCrypto.getInstance().init().catch((e: Error) => {
+        hilog.error(DOMAIN, TAG, 'HUKS init failed %{public}s', e.message ?? `${e}`);
+      }),
       ThemeStore.getInstance().init(this.context),
       AuthStore.getInstance().init(this.context),
       CloudSyncServiceFactory.init(this.context)
-    ]).then(() => {
-      hilog.info(DOMAIN, TAG, 'HostStore + ThemeStore + Auth + CloudSync ready');
+    ]).then(async () => {
+      // HostStore after HUKS/AppSettings so migration can encrypt
+      await HostStore.getInstance().init(this.context);
+      hilog.info(DOMAIN, TAG, 'Stores + HUKS + AppSettings ready');
     }).catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Store init failed %{public}s', JSON.stringify(err));
     });

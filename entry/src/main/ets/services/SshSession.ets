@@ -1,29 +1,11 @@
 import { HostConfig } from '../models/HostConfig';
+import { AppSettings } from './AppSettings';
+import { isNativeModulePresent, getNativeLoadError } from './native/NativeBridge';
+import { NativeSshSession } from './native/NativeSshSession';
+import { ISshSession, SshSessionState } from './types/SshTypes';
 
-/**
- * SSH 会话抽象：为后续 NAPI + libssh2 / OpenSSH 预留清晰接缝。
- */
-export interface ISshSession {
-  connect(host: HostConfig): Promise<void>;
-  disconnect(): Promise<void>;
-  send(command: string): Promise<void>;
-  isConnected(): boolean;
-  getOutput(): string;
-  onOutput(listener: (chunk: string) => void): void;
-}
+export { ISshSession, SshSessionState } from './types/SshTypes';
 
-export enum SshSessionState {
-  Idle = 'idle',
-  Connecting = 'connecting',
-  Connected = 'connected',
-  Disconnected = 'disconnected',
-  Error = 'error'
-}
-
-/**
- * Mock 实现：展示连接横幅并对命令做 echo，不依赖原生 SSH 库。
- * 正式接入时替换为 NativeSshSession，保持 ISshSession 不变。
- */
 export class MockSshSession implements ISshSession {
   private connected: boolean = false;
   private outputBuffer: string = '';
@@ -117,9 +99,23 @@ export class MockSshSession implements ISshSession {
   }
 }
 
-/** 工厂：当前返回 Mock；未来可按配置切换 Native */
+/** 工厂：preferNative 且 .so 可用 → Native，否则 Mock */
 export class SshSessionFactory {
   static create(): ISshSession {
+    if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
+      return new NativeSshSession();
+    }
     return new MockSshSession();
+  }
+
+  static lastNativeHint(): string {
+    if (!AppSettings.getInstance().preferNative()) {
+      return '已使用 Mock（设置中未开启原生协议）';
+    }
+    if (!isNativeModulePresent()) {
+      const err = getNativeLoadError();
+      return err ? `原生模块不可用：${err}` : '原生模块不可用，已回退 Mock';
+    }
+    return '将尝试 Native SSH';
   }
 }

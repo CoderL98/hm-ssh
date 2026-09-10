@@ -1,7 +1,7 @@
 import { router, promptAction } from '@kit.ArkUI';
 import { HostConfig } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
-import { FtpEntry, FtpSessionFactory, MockFtpSession } from '../services/FtpSession';
+import { FtpEntry, FtpSessionFactory, IFtpSession } from '../services/FtpSession';
 import { FtpBrowserView } from '../components/FtpBrowserView';
 import { ThemeStore } from '../services/ThemeStore';
 import { ThemeTokens } from '../theme/ThemeTokens';
@@ -24,7 +24,7 @@ struct FtpBrowserPage {
     return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
   }
 
-  private session: MockFtpSession = FtpSessionFactory.create() as MockFtpSession;
+  private session: IFtpSession = FtpSessionFactory.create();
   private host: HostConfig | null = null;
 
   aboutToAppear(): void {
@@ -64,7 +64,7 @@ struct FtpBrowserPage {
       this.cwd = this.session.getCwd();
       await this.refreshList();
     } catch (e) {
-      this.errorMessage = `${e}`;
+      this.errorMessage = `${e}（${FtpSessionFactory.lastNativeHint()}）`;
       this.connected = false;
     } finally {
       this.loading = false;

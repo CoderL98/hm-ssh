@@ -4,6 +4,7 @@ import { HostConfig, HostJson } from '../models/HostConfig';
 import { HostStore } from './HostStore';
 import { ThemeStore, CloudSettingsJson } from './ThemeStore';
 import { AuthStore, cloudRequest } from './AuthService';
+import { AppSettings } from './AppSettings';
 
 const META_STORE = 'hm_ssh_sync_meta';
 const KEY_HOSTS_TS = 'hosts_server_updated_at';
@@ -27,7 +28,9 @@ export interface SyncBlobResult {
  * 5. 设置 JSON 整包：服务端较新则整包应用；否则上传本地。
  *
  * ## 机密字段
- * 默认 **不** 将 `password` / `privateKey` 上传云端；合并时若云端为空则保留本地机密。
+ * 默认 **不** 将明文 `password` / `privateKey` 上传云端。
+ * 开启「同步加密密钥到云端」时上传 `passwordEnc` / `privateKeyEnc`（口令派生）；服务端不剥离这些字段。
+ * 合并时若云端明文为空则保留本地机密。
  *
  * HostStore 仍是本地真相源；云同步为 additive，不改变未登录行为。
  */
@@ -83,7 +86,7 @@ export class HttpCloudSyncService implements ICloudSyncService {
 
     if (serverTs === 0 || !Array.isArray(data)) {
       await this.pushHosts();
-      return '主机：云端为空，已上传本地（不含密码/私钥）';
+      return '主机：云端为空，已上传本地（不含明文密码/私钥）';
     }
 
     const remoteJson = data as HostJson[];
@@ -102,7 +105,7 @@ export class HttpCloudSyncService implements ICloudSyncService {
     }
 
     await this.pushHostsInternal(token);
-    return '主机：已上传本地到云端（不含密码/私钥）';
+    return '主机：已上传本地到云端（不含明文密码/私钥）';
   }
 
   async pushHosts(): Promise<string> {
@@ -111,12 +114,12 @@ export class HttpCloudSyncService implements ICloudSyncService {
       throw new Error('未登录');
     }
     await this.pushHostsInternal(token);
-    return '主机：已上传（不含密码/私钥）';
+    return '主机：已上传（不含明文密码/私钥）';
   }
 
   private async pushHostsInternal(token: string): Promise<void> {
-    // 默认排除机密字段，避免明文密码/私钥上云
-    const list: HostJson[] = HostStore.getInstance().getAll().map((h: HostConfig) => h.toCloudJson());
+    const vault = AppSettings.getInstance().isCloudVaultEnabled();
+    const list: HostJson[] = HostStore.getInstance().getAll().map((h: HostConfig) => h.toCloudJson(vault));
     const raw = await cloudRequest('PUT', '/api/v1/sync/hosts', {
       data: list,
       client_updated_at: Date.now()
@@ -240,10 +243,11 @@ export class MockCloudSyncService implements ICloudSyncService {
   }
 
   async pushHosts(): Promise<string> {
-    const list = HostStore.getInstance().getAll().map((h: HostConfig) => h.toCloudJson());
+    const vault = AppSettings.getInstance().isCloudVaultEnabled();
+    const list = HostStore.getInstance().getAll().map((h: HostConfig) => h.toCloudJson(vault));
     MockCloudSyncService.hostsBlob = JSON.stringify(list);
     MockCloudSyncService.hostsTs = Date.now();
-    return '主机：已写入 Mock 云端（不含密码/私钥）';
+    return '主机：已写入 Mock 云端（不含明文密码/私钥）';
   }
 
   async pullAndMergeSettings(): Promise<string> {

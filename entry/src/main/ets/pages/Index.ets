@@ -2,9 +2,9 @@ import { router, promptAction, display, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { HostConfig } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
-import { MockSshSession, SshSessionFactory } from '../services/SshSession';
-import { FtpEntry, FtpSessionFactory, MockFtpSession } from '../services/FtpSession';
-import { MockVncSession, VncFramebufferInfo, VncSessionFactory } from '../services/VncSession';
+import { ISshSession, SshSessionFactory } from '../services/SshSession';
+import { FtpEntry, FtpSessionFactory, IFtpSession } from '../services/FtpSession';
+import { IVncSession, VncFramebufferInfo, VncSessionFactory } from '../services/VncSession';
 import { HostListPanel } from '../components/HostListPanel';
 import { TerminalView } from '../components/TerminalView';
 import { FtpBrowserView } from '../components/FtpBrowserView';
@@ -49,9 +49,9 @@ struct Index {
   @State vncStatus: string = '';
   @State vncFramebuffer: VncFramebufferInfo | null = null;
 
-  private sshSession: MockSshSession = SshSessionFactory.create() as MockSshSession;
-  private ftpSession: MockFtpSession = FtpSessionFactory.create() as MockFtpSession;
-  private vncSession: MockVncSession = VncSessionFactory.create() as MockVncSession;
+  private sshSession: ISshSession = SshSessionFactory.create();
+  private ftpSession: IFtpSession = FtpSessionFactory.create();
+  private vncSession: IVncSession = VncSessionFactory.create();
   private windowClass: window.Window | undefined = undefined;
   private sizeSnapshot: WindowSizeState = new WindowSizeState();
 
@@ -237,6 +237,20 @@ struct Index {
 
   private async openInSplit(host: HostConfig): Promise<void> {
     await this.disconnectAll();
+    // 每次按工厂重建，以响应「使用原生协议」开关
+    this.sshSession = SshSessionFactory.create();
+    this.ftpSession = FtpSessionFactory.create();
+    this.vncSession = VncSessionFactory.create();
+    this.sshSession.onOutput((_chunk: string) => {
+      this.terminalOutput = this.sshSession.getOutput();
+      this.terminalConnected = this.sshSession.isConnected();
+    });
+    this.ftpSession.onStatus((msg: string) => {
+      this.ftpStatus = msg;
+    });
+    this.vncSession.onStatus((msg: string) => {
+      this.vncStatus = msg;
+    });
     this.terminalConnected = false;
     this.ftpConnected = false;
     this.vncConnected = false;
@@ -256,9 +270,17 @@ struct Index {
   private async openSshSplit(host: HostConfig): Promise<void> {
     this.terminalTitle = host.displayName();
     this.sshSession.clearOutput();
-    await this.sshSession.connect(host);
-    this.terminalOutput = this.sshSession.getOutput();
-    this.terminalConnected = this.sshSession.isConnected();
+    try {
+      await this.sshSession.connect(host);
+      this.terminalOutput = this.sshSession.getOutput();
+      this.terminalConnected = this.sshSession.isConnected();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      this.terminalOutput = `连接失败：${msg}
+${SshSessionFactory.lastNativeHint()}
+`;
+      this.terminalConnected = false;
+    }
   }
 
   private async openFtpSplit(host: HostConfig): Promise<void> {
@@ -271,7 +293,7 @@ struct Index {
       this.ftpCwd = this.ftpSession.getCwd();
       this.ftpEntries = await this.ftpSession.list();
     } catch (e) {
-      this.ftpError = `${e}`;
+      this.ftpError = `${e}（${FtpSessionFactory.lastNativeHint()}）`;
       this.ftpConnected = false;
     } finally {
       this.ftpLoading = false;
@@ -280,10 +302,16 @@ struct Index {
 
   private async openVncSplit(host: HostConfig): Promise<void> {
     this.vncTitle = host.displayName();
-    await this.vncSession.connect(host);
-    this.vncConnected = this.vncSession.isConnected();
-    this.vncFramebuffer = this.vncSession.getFramebuffer();
-    this.vncStatus = this.vncSession.getStatusMessage();
+    try {
+      await this.vncSession.connect(host);
+      this.vncConnected = this.vncSession.isConnected();
+      this.vncFramebuffer = this.vncSession.getFramebuffer();
+      this.vncStatus = this.vncSession.getStatusMessage();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `${e}`;
+      this.vncConnected = false;
+      this.vncStatus = `连接失败：${msg}（${VncSessionFactory.lastNativeHint()}）`;
+    }
   }
 
   private async refreshFtpList(): Promise<void> {

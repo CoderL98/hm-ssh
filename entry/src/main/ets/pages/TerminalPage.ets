@@ -1,7 +1,7 @@
 import { router } from '@kit.ArkUI';
 import { HostConfig } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
-import { MockSshSession, SshSessionFactory } from '../services/SshSession';
+import { ISshSession, SshSessionFactory } from '../services/SshSession';
 import { TerminalView } from '../components/TerminalView';
 import { ThemeStore } from '../services/ThemeStore';
 import { ThemeTokens } from '../theme/ThemeTokens';
@@ -21,7 +21,7 @@ struct TerminalPage {
     return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
   }
 
-  private session: MockSshSession = SshSessionFactory.create() as MockSshSession;
+  private session: ISshSession = SshSessionFactory.create();
   private host: HostConfig | null = null;
 
   aboutToAppear(): void {
@@ -41,6 +41,11 @@ struct TerminalPage {
       this.session.connect(this.host).then(() => {
         this.output = this.session.getOutput();
         this.connected = this.session.isConnected();
+      }).catch((e: Error) => {
+        this.output = `连接失败：${e.message}
+${SshSessionFactory.lastNativeHint()}
+`;
+        this.connected = false;
       });
     } else {
       this.output = '未找到主机配置。\n';

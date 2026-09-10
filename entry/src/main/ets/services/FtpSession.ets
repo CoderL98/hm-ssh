@@ -1,41 +1,10 @@
 import { HostConfig } from '../models/HostConfig';
+import { AppSettings } from './AppSettings';
+import { isNativeModulePresent, getNativeLoadError } from './native/NativeBridge';
+import { NativeFtpSession } from './native/NativeFtpSession';
+import { FtpEntry, FtpSessionState, IFtpSession } from './types/FtpTypes';
 
-/** FTP 目录条目 */
-export interface FtpEntry {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-  size: number;
-  /** 简易权限/类型标记，Mock 用 */
-  modifiedAt: number;
-}
-
-export enum FtpSessionState {
-  Idle = 'idle',
-  Connecting = 'connecting',
-  Connected = 'connected',
-  Disconnected = 'disconnected',
-  Error = 'error'
-}
-
-/**
- * FTP 会话抽象：list / cd / download / upload。
- * 真实实现可替换为 NAPI + libcurl / 自研 FTP 客户端。
- */
-export interface IFtpSession {
-  connect(host: HostConfig): Promise<void>;
-  disconnect(): Promise<void>;
-  isConnected(): boolean;
-  getCwd(): string;
-  list(): Promise<FtpEntry[]>;
-  cd(path: string): Promise<void>;
-  /** 下载到本地路径（Mock：记录操作并返回伪内容） */
-  download(remotePath: string): Promise<string>;
-  /** 上传内容到远程路径（Mock：写入内存 FS） */
-  upload(remotePath: string, content: string): Promise<void>;
-  getStatusMessage(): string;
-  onStatus(listener: (msg: string) => void): void;
-}
+export { FtpEntry, FtpSessionState, IFtpSession } from './types/FtpTypes';
 
 interface MockNode {
   name: string;
@@ -354,6 +323,19 @@ export class MockFtpSession implements IFtpSession {
 
 export class FtpSessionFactory {
   static create(): IFtpSession {
+    if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
+      return new NativeFtpSession();
+    }
     return new MockFtpSession();
+  }
+
+  static lastNativeHint(): string {
+    if (!AppSettings.getInstance().preferNative()) {
+      return '已使用 Mock FTP';
+    }
+    if (!isNativeModulePresent()) {
+      return `原生模块不可用：${getNativeLoadError() || '未编译 .so'}`;
+    }
+    return '将尝试 Native FTP';
   }
 }

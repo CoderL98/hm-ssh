@@ -1,7 +1,7 @@
 import { router } from '@kit.ArkUI';
 import { HostConfig } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
-import { MockVncSession, VncFramebufferInfo, VncSessionFactory } from '../services/VncSession';
+import { IVncSession, VncFramebufferInfo, VncSessionFactory } from '../services/VncSession';
 import { VncSessionView } from '../components/VncSessionView';
 import { ThemeStore } from '../services/ThemeStore';
 import { ThemeTokens } from '../theme/ThemeTokens';
@@ -21,7 +21,7 @@ struct VncSessionPage {
     return ThemeTokens.accentColor(ThemeStore.getInstance().getAccentId());
   }
 
-  private session: MockVncSession = VncSessionFactory.create() as MockVncSession;
+  private session: IVncSession = VncSessionFactory.create();
   private host: HostConfig | null = null;
 
   aboutToAppear(): void {
@@ -41,6 +41,9 @@ struct VncSessionPage {
         this.connected = this.session.isConnected();
         this.framebuffer = this.session.getFramebuffer();
         this.statusMessage = this.session.getStatusMessage();
+      }).catch((e: Error) => {
+        this.connected = false;
+        this.statusMessage = `连接失败：${e.message}（${VncSessionFactory.lastNativeHint()}）`;
       });
     } else {
       this.statusMessage = '未找到主机配置。';

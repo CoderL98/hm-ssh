@@ -1,37 +1,10 @@
 import { HostConfig } from '../models/HostConfig';
+import { AppSettings } from './AppSettings';
+import { isNativeModulePresent, getNativeLoadError } from './native/NativeBridge';
+import { NativeVncSession } from './native/NativeVncSession';
+import { IVncSession, VncFramebufferInfo, VncSessionState } from './types/VncTypes';
 
-export enum VncSessionState {
-  Idle = 'idle',
-  Connecting = 'connecting',
-  Connected = 'connected',
-  Disconnected = 'disconnected',
-  Error = 'error'
-}
-
-/** 假帧缓冲描述，真实 RFB 需 native 解码 */
-export interface VncFramebufferInfo {
-  width: number;
-  height: number;
-  /** 占位色，模拟桌面背景 */
-  placeholderColor: string;
-  label: string;
-}
-
-/**
- * VNC 会话抽象。真实 RFB 协议需 NAPI 模块解码像素与输入事件。
- */
-export interface IVncSession {
-  connect(host: HostConfig): Promise<void>;
-  disconnect(): Promise<void>;
-  isConnected(): boolean;
-  getFramebuffer(): VncFramebufferInfo | null;
-  /** 鼠标事件钩子（Mock：记录日志） */
-  sendPointer(x: number, y: number, buttons: number): void;
-  /** 键盘事件钩子（Mock：记录日志） */
-  sendKey(keysym: number, down: boolean): void;
-  getStatusMessage(): string;
-  onStatus(listener: (msg: string) => void): void;
-}
+export { IVncSession, VncFramebufferInfo, VncSessionState } from './types/VncTypes';
 
 export class MockVncSession implements IVncSession {
   private connected: boolean = false;
@@ -126,6 +99,19 @@ export class MockVncSession implements IVncSession {
 
 export class VncSessionFactory {
   static create(): IVncSession {
+    if (AppSettings.getInstance().preferNative() && isNativeModulePresent()) {
+      return new NativeVncSession();
+    }
     return new MockVncSession();
+  }
+
+  static lastNativeHint(): string {
+    if (!AppSettings.getInstance().preferNative()) {
+      return '已使用 Mock VNC';
+    }
+    if (!isNativeModulePresent()) {
+      return `原生模块不可用：${getNativeLoadError() || '未编译 .so'}`;
+    }
+    return '将尝试 Native VNC';
   }
 }

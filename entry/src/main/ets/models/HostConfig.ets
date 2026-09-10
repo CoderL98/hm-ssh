@@ -11,6 +11,12 @@ export interface HostJson {
   username: string;
   password: string;
   privateKey: string;
+  /** 本地 HUKS 密文 pack（v1:iv:cipher）；内存 plaintext 在 password 字段 */
+  passwordLocalEnc?: string;
+  privateKeyLocalEnc?: string;
+  /** 云端保险柜密文（cv1:...）；仅当「同步加密密钥到云端」开启时上传 */
+  passwordEnc?: string;
+  privateKeyEnc?: string;
   /** 协议：ssh | ftp | vnc；缺省视为 ssh（兼容旧数据） */
   protocol?: string;
   /** FTP 初始远程路径，可选 */
@@ -25,10 +31,15 @@ export class HostConfig {
   host: string = '';
   port: number = 22;
   username: string = '';
-  /** 明文仅用于里程碑演示；正式版应使用加密存储 */
+  /** 内存中的明文；落盘时经 HUKS 写入 passwordLocalEnc */
   password: string = '';
-  /** 私钥路径或 PEM 文本占位，后续接入真实 SSH */
+  /** 内存中的私钥 PEM；落盘时经 HUKS 写入 privateKeyLocalEnc */
   privateKey: string = '';
+  passwordLocalEnc: string = '';
+  privateKeyLocalEnc: string = '';
+  /** 云端保险柜密文（可跨设备）；默认不上云 */
+  passwordEnc: string = '';
+  privateKeyEnc: string = '';
   protocol: HostProtocol = 'ssh';
   /** FTP 初始目录，默认 / */
   remotePath: string = '/';
@@ -105,8 +116,13 @@ export class HostConfig {
       host: this.host,
       port: this.port,
       username: this.username,
-      password: this.password,
-      privateKey: this.privateKey,
+      // 持久化不写明文；明文仅内存
+      password: '',
+      privateKey: '',
+      passwordLocalEnc: this.passwordLocalEnc,
+      privateKeyLocalEnc: this.privateKeyLocalEnc,
+      passwordEnc: this.passwordEnc,
+      privateKeyEnc: this.privateKeyEnc,
       protocol: this.protocol,
       remotePath: this.remotePath,
       createdAt: this.createdAt,
@@ -115,13 +131,19 @@ export class HostConfig {
   }
 
   /**
-   * 云同步载荷：默认排除 password / privateKey（本地-only 机密）。
-   * 合并远端时若云端字段为空，保留本地机密。
+   * 云同步载荷：始终排除明文 password / privateKey。
+   * 若开启云端保险柜，附带 passwordEnc / privateKeyEnc；否则清空这些字段。
    */
-  toCloudJson(): HostJson {
+  toCloudJson(includeVaultEnc: boolean = false): HostJson {
     const j = this.toJson();
     j.password = '';
     j.privateKey = '';
+    j.passwordLocalEnc = '';
+    j.privateKeyLocalEnc = '';
+    if (!includeVaultEnc) {
+      j.passwordEnc = '';
+      j.privateKeyEnc = '';
+    }
     return j;
   }
 
@@ -136,6 +158,18 @@ export class HostConfig {
     if ((!this.privateKey || this.privateKey.length === 0) && other.privateKey) {
       this.privateKey = other.privateKey;
     }
+    if ((!this.passwordLocalEnc || this.passwordLocalEnc.length === 0) && other.passwordLocalEnc) {
+      this.passwordLocalEnc = other.passwordLocalEnc;
+    }
+    if ((!this.privateKeyLocalEnc || this.privateKeyLocalEnc.length === 0) && other.privateKeyLocalEnc) {
+      this.privateKeyLocalEnc = other.privateKeyLocalEnc;
+    }
+    if ((!this.passwordEnc || this.passwordEnc.length === 0) && other.passwordEnc) {
+      this.passwordEnc = other.passwordEnc;
+    }
+    if ((!this.privateKeyEnc || this.privateKeyEnc.length === 0) && other.privateKeyEnc) {
+      this.privateKeyEnc = other.privateKeyEnc;
+    }
   }
 
   static fromJson(json: HostJson): HostConfig {
@@ -146,8 +180,13 @@ export class HostConfig {
     c.protocol = HostConfig.normalizeProtocol(json.protocol);
     c.port = json.port ?? HostConfig.defaultPort(c.protocol);
     c.username = json.username ?? '';
+    // 兼容旧明文；新数据明文为空，密文在 *Enc / *LocalEnc
     c.password = json.password ?? '';
     c.privateKey = json.privateKey ?? '';
+    c.passwordLocalEnc = json.passwordLocalEnc ?? '';
+    c.privateKeyLocalEnc = json.privateKeyLocalEnc ?? '';
+    c.passwordEnc = json.passwordEnc ?? '';
+    c.privateKeyEnc = json.privateKeyEnc ?? '';
     c.remotePath = json.remotePath && json.remotePath.length > 0 ? json.remotePath : '/';
     c.createdAt = json.createdAt ?? 0;
     c.updatedAt = json.updatedAt ?? 0;

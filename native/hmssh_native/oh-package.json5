@@ -1,0 +1,10 @@
+{
+  "name": "libhmssh_native.so",
+  "version": "1.0.0",
+  "description": "HmSSH native protocol backends (SSH/FTP/VNC)",
+  "main": "",
+  "author": "CoderL98",
+  "license": "MIT",
+  "types": "./types/libhmssh_native/Index.d.ts",
+  "dependencies": {}
+}

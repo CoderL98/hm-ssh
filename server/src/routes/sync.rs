@@ -122,7 +122,8 @@ async fn put_sync(
     }))
 }
 
-/// Clear password / privateKey (and snake_case variants) on each host object.
+/// Clear plaintext password / privateKey (and snake_case variants).
+/// Keeps passwordEnc / privateKeyEnc (client-side vault ciphertext) intact.
 pub(crate) fn strip_host_secrets(data: Value) -> Value {
     match data {
         Value::Array(items) => Value::Array(
@@ -164,6 +165,23 @@ mod tests {
         assert_eq!(arr[0]["name"], "demo");
         assert_eq!(arr[1]["name"], "plain");
         assert!(arr[1].get("password").is_none());
+    }
+
+    #[test]
+    fn strip_keeps_password_enc_fields() {
+        let input = json!([{
+            "id": "h1",
+            "password": "secret",
+            "privateKey": "KEY",
+            "passwordEnc": "cv1:salt:iv:cipher",
+            "privateKeyEnc": "cv1:salt:iv:cipher2"
+        }]);
+        let out = strip_host_secrets(input);
+        let arr = out.as_array().unwrap();
+        assert_eq!(arr[0]["password"], "");
+        assert_eq!(arr[0]["privateKey"], "");
+        assert_eq!(arr[0]["passwordEnc"], "cv1:salt:iv:cipher");
+        assert_eq!(arr[0]["privateKeyEnc"], "cv1:salt:iv:cipher2");
     }
 
     #[test]

@@ -4,6 +4,8 @@ import { ThemeTokens } from '../theme/ThemeTokens';
 import { AuthServiceFactory, AuthStore } from '../services/AuthService';
 import { CloudSyncServiceFactory } from '../services/CloudSyncService';
 import { CloudConfig } from '../common/Constants';
+import { AppSettings } from '../services/AppSettings';
+import { HostStore } from '../services/HostStore';
 
 /**
  * 帐号：登录 / 注册 + Mock/真实服务器切换 + 云同步。
@@ -24,11 +26,18 @@ struct AccountPage {
   @State loggedIn: boolean = false;
   @State displayName: string = '';
   @State lastSyncLabel: string = '';
+  @State cloudVault: boolean = false;
+  @State vaultPassphrase: string = '';
+  @State huksStatus: string = '';
 
   aboutToAppear(): void {
     const store = AuthStore.getInstance();
     this.baseUrl = store.getBaseUrl();
     this.useMock = store.isUseMock();
+    this.cloudVault = AppSettings.getInstance().isCloudVaultEnabled();
+    this.vaultPassphrase = AppSettings.getInstance().getVaultPassphrase();
+    const he = HostStore.getInstance().getHuksError();
+    this.huksStatus = he ? `HUKS：${he}` : 'HUKS：就绪或将在首次加密时初始化';
     this.refreshSession();
   }
 
@@ -212,6 +221,27 @@ struct AccountPage {
     } finally {
       this.busy = false;
     }
+  }
+
+  private async toggleVault(next: boolean): Promise<void> {
+    if (next && this.vaultPassphrase.length < CloudConfig.MIN_PASSWORD_LEN) {
+      this.toast(`开启保险柜前请先填写至少 ${CloudConfig.MIN_PASSWORD_LEN} 位口令`);
+      // keep UI toggle visual in sync by resetting state
+      this.cloudVault = false;
+      return;
+    }
+    AppSettings.getInstance().setVaultPassphrase(this.vaultPassphrase);
+    await AppSettings.getInstance().setCloudVaultEnabled(next);
+    this.cloudVault = next;
+    if (next) {
+      // 触发对本机主机重新封存，填充 passwordEnc
+      const store = HostStore.getInstance();
+      const all = store.getAll();
+      for (let i = 0; i < all.length; i++) {
+        await store.upsert(all[i]);
+      }
+    }
+    this.toast(next ? '已开启云端密钥保险柜（同步 passwordEnc）' : '已关闭：机密仅本机');
   }
 
   build() {
@@ -441,6 +471,62 @@ struct AccountPage {
             .borderRadius($r('app.float.card_radius'))
             .clip(true)
           }
+
+
+          this.sectionTitle($r('app.string.account_cloud_vault'))
+          Column() {
+            Text($r('app.string.account_cloud_vault_hint'))
+              .fontSize(13)
+              .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+            Text($r('app.string.account_vault_passphrase'))
+              .fontSize(13)
+              .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 4, bottom: 2 })
+            TextInput({ text: this.vaultPassphrase, placeholder: '' })
+              .width('100%')
+              .height(40)
+              .fontSize(16)
+              .fontColor(this.textPrimary())
+              .backgroundColor(Color.Transparent)
+              .padding({ left: 16, right: 16 })
+              .type(InputType.Password)
+              .onChange((v: string) => {
+                this.vaultPassphrase = v;
+                AppSettings.getInstance().setVaultPassphrase(v);
+              })
+              .margin({ bottom: 4 })
+            Text($r('app.string.account_vault_passphrase_hint'))
+              .fontSize(12)
+              .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 16, right: 16, bottom: 8 })
+            Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+            Row() {
+              Text($r('app.string.account_cloud_vault_toggle'))
+                .fontSize(16)
+                .fontColor(this.textPrimary())
+                .layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.cloudVault })
+                .selectedColor(this.accent())
+                .onChange((isOn: boolean) => {
+                  this.toggleVault(isOn);
+                })
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+            Text(this.huksStatus)
+              .fontSize(12)
+              .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 16, right: 16, bottom: 12 })
+          }
+          .width('100%')
+          .backgroundColor(this.surfaceCard())
+          .borderRadius($r('app.float.card_radius'))
+          .clip(true)
 
           if (this.statusText.length > 0) {
             Text(this.statusText)

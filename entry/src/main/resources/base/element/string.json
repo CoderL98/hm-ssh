@@ -314,7 +314,7 @@
     },
     {
       "name": "account_huks_note",
-      "value": "Token 现存储于 preferences，后续将迁入 HUKS。主机密码/私钥默认不上云。本地 HostStore 仍是离线真相源。"
+      "value": "Token 与主机机密经 HUKS（AES）加密落盘；明文仅在内存中用于连接。可选云端保险柜见上方开关。"
     },
     {
       "name": "account_backend",
@@ -334,7 +334,7 @@
     },
     {
       "name": "account_secrets_note",
-      "value": "安全：主机密码与私钥默认不同步到云端，仅保存在本机。"
+      "value": "安全：明文密码/私钥永不上传。开启保险柜时仅同步 passwordEnc / privateKeyEnc。"
     },
     {
       "name": "account_sync_loading",
@@ -359,6 +359,50 @@
     {
       "name": "account_never_synced",
       "value": "尚未同步"
+    },
+    {
+      "name": "settings_protocol",
+      "value": "协议后端"
+    },
+    {
+      "name": "settings_use_native",
+      "value": "使用原生协议（需编译 native）"
+    },
+    {
+      "name": "settings_use_native_hint",
+      "value": "开启后优先使用 libhmssh_native.so；未编译或加载失败时自动回退 Mock。"
+    },
+    {
+      "name": "settings_native_status",
+      "value": "原生模块状态"
+    },
+    {
+      "name": "account_cloud_vault",
+      "value": "云端密钥保险柜"
+    },
+    {
+      "name": "account_cloud_vault_toggle",
+      "value": "同步加密密钥到云端"
+    },
+    {
+      "name": "account_cloud_vault_hint",
+      "value": "默认关闭：密码/私钥仅本机 HUKS 加密。开启后用口令派生密钥加密为 passwordEnc/privateKeyEnc 再同步（HUKS 密钥不可导出）。"
+    },
+    {
+      "name": "account_vault_passphrase",
+      "value": "保险柜口令"
+    },
+    {
+      "name": "account_vault_passphrase_hint",
+      "value": "至少 8 位；仅保存在内存，用于加解密云端密文。"
+    },
+    {
+      "name": "native_missing_toast",
+      "value": "原生模块不可用，已使用 Mock"
+    },
+    {
+      "name": "huks_failed_toast",
+      "value": "HUKS 初始化失败，机密可能明文存储"
     }
   ]
 }

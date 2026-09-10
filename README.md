@@ -2,7 +2,7 @@
 
 HarmonyOS NEXT 原生远程管理客户端（ArkTS · Stage 模型）。首期面向手机，架构预留平板 / PC / 折叠屏扩展；阔折叠展开横屏时支持「主机列表 + 会话面板」并排。
 
-> **当前里程碑**：主机 CRUD（preferences）、多协议（SSH / FTP / VNC）、自适应窄/宽布局、Mock 会话、**云帐号 + 主机/设置同步**（Rust server + 客户端接缝）。真实协议通过 `ISshSession` / `IFtpSession` / `IVncSession` 接缝后续以 NAPI 接入。
+> **当前里程碑**：主机 CRUD、多协议、自适应布局、Mock 会话、云帐号同步，以及 **NAPI 原生协议源码（SSH/FTP/VNC）+ HUKS 加密**。未在本环境链接 OHOS NDK；DevEco 编译 `.so` 后设置中开启「使用原生协议」即可优先走 Native，否则回退 Mock。
 
 ## 视觉语言
 
@@ -40,10 +40,14 @@ hm-ssh/
 │       ├── pages/             # Index / HostEdit / Terminal / FtpBrowser / VncSession / Settings / Account
 │       ├── components/        # HostList* / TerminalView / FtpBrowserView / VncSessionView
 │       ├── models/            # HostConfig（含 protocol）
-│       ├── services/          # HostStore、ThemeStore、Auth、CloudSync、Ssh/Ftp/Vnc Session
+│       ├── services/          # HostStore、ThemeStore、Auth、CloudSync、HuksCrypto、AppSettings、Session
+│       │   └── native/        # NativeBridge + NativeSsh/Ftp/VncSession
 │       ├── theme/             # ThemeTokens（强调色 / 终端配色 / 对比度）
 │       ├── layout/            # Breakpoint 断点与分栏比例
 │       └── common/            # 路由常量、CloudConfig
+│   └── src/main/cpp/          # CMake → native/hmssh_native
+├── native/                    # NAPI C++ 协议后端源码 + 中文 README
+│   └── hmssh_native/          # SSH(libssh2)/FTP/VNC + types
 ├── server/                    # Rust 云端（axum + sqlx + JWT + Argon2）
 │   ├── src/                   # auth / db / cache / routes
 │   ├── migrations/
@@ -88,24 +92,21 @@ hm-ssh/
 
 令牌解析：`theme/ThemeTokens.ets`；深色资源：`entry/src/main/resources/dark/element/color.json`（纯净风黑底 + `#1C1C1E` 卡片）。
 
-### SSH 终端（Mock）
+### SSH 终端
 
 - 终端样式区域 + 底部输入行
-- `MockSshSession`：连接横幅、命令回显、`exit` / `clear`
-- 抽象 `ISshSession` + `SshSessionFactory`
+- `ISshSession` + `SshSessionFactory`：设置开启原生且 `.so` 可用 → `NativeSshSession`（NAPI + libssh2），否则 `MockSshSession`
+- Mock：连接横幅、命令回显、`exit` / `clear`
 
-### FTP 浏览器（Mock）
+### FTP 浏览器
 
 - 路径面包屑、文件/文件夹列表、上级 / 刷新、上传 / 下载
-- `MockFtpSession`：内存文件系统（含 `/home/user` 示例树）；`list` / `cd` / `download` / `upload` 更新 Mock FS
-- 空目录、加载中、错误态
-- 抽象 `IFtpSession` + `FtpSessionFactory`，便于替换真实 FTP（libcurl / 自研）
+- `IFtpSession` + 工厂：Native（自研 PASV）或 Mock 内存 FS
 
-### VNC 远程桌面（Mock）
+### VNC 远程桌面
 
-- 占位「帧缓冲」画布（假分辨率标签 + 网格）、连接状态、断开
-- 触控 → `sendPointer` stub；「模拟按键」→ `sendKey` stub
-- `MockVncSession` + `IVncSession`；**真实 RFB 必须走 NAPI 原生模块**（像素解码与输入注入）
+- `IVncSession` + 工厂：Native RFB（None/VNC Auth + Raw 帧）或 Mock 占位画布
+- 触控 / 模拟按键；Native 提供 RGBA 缓冲供 PixelMap 绘制
 
 ### 自适应 / 折叠屏 / 平板 / PC
 
@@ -144,13 +145,14 @@ hm-ssh/
 
 | 组件 | 说明 |
 | --- | --- |
-| `AuthService` | `IAuthService` + `HttpAuthService` / `MockAuthService`；JWT + refresh 存 preferences（**HUKS 为后续**）；HTTP 请求自动 refresh |
-| `CloudSyncService` | `GET/PUT /api/v1/sync/hosts` 与 `/settings`；登录后自动同步；主机保存/删除与主题变更后台推送 |
-| `server/` | Rust 云端：注册/登录/refresh/logout、SQLite（默认可换 PG/MySQL）、内存/Redis 缓存 |
+| `AuthService` | JWT + refresh；**HUKS 加密**后写入 preferences；HTTP 自动 refresh |
+| `HuksCrypto` | `@kit.UniversalKeystoreKit` AES；可选口令 PBKDF「云端保险柜」 |
+| `CloudSyncService` | hosts/settings 同步；默认剥离明文；保险柜开启时带 `passwordEnc`/`privateKeyEnc` |
+| `server/` | Rust 云端；`strip_host_secrets` **保留** `passwordEnc`/`privateKeyEnc`，清空明文 |
 
-**合并策略（last-write-wins）**：以服务端资源级 `updated_at`（Unix ms）为权威；主机列表按 `id` 合并，同一 id 取本地/远端 `updatedAt` 较大者；设置 JSON 整包采用较新一侧。本地 `HostStore` 仍是离线真相源，云同步为 **additive**。
+**合并策略（last-write-wins）**：以服务端资源级 `updated_at`（Unix ms）为权威；主机列表按 `id` 合并；本地 `HostStore` 仍是离线真相源。
 
-**机密不上云**：同步载荷默认清空 `password` / `privateKey`（客户端 `toCloudJson` + 服务端再剥离）；合并时若云端为空则保留本机密。
+**机密策略**：明文 `password`/`privateKey` 永不上传。本机 HUKS 密文存 `passwordLocalEnc`。可选「同步加密密钥到云端」（帐号页，默认 OFF）：用保险柜口令 PBKDF 派生密钥加密为 `passwordEnc`/`privateKeyEnc` 再同步。
 
 启动云端见 [`server/README.md`](./server/README.md)：
 
@@ -161,39 +163,35 @@ cargo run                          # http://0.0.0.0:8080
 
 环境变量摘要：`DATABASE_URL`（`sqlite:` / `postgres://` / `mysql://`）、`JWT_SECRET`、可选 `REDIS_URL`、`BIND`、`CORS_ORIGINS`、`AUTH_RATE_LIMIT_PER_MIN`（默认 20）。
 
-## Mock vs 真实（NAPI）计划
+## Mock vs 真实（NAPI）
 
-| 能力 | 当前 | 下一步 |
+| 能力 | 当前 | 说明 |
 | --- | --- | --- |
-| SSH | `MockSshSession` 回显 | NAPI + **libssh2**（或兼容库）：connect / auth / PTY channel |
-| FTP | `MockFtpSession` 内存 FS | NAPI + **libcurl** 或自研 FTP：LIST / CWD / RETR / STOR |
-| VNC | `MockVncSession` 占位画布 + 输入 stub | NAPI + **RFB** 解码（LibVNCClient 等）+ Surface 渲染与键鼠注入 |
-| 凭据 | preferences 明文 | HUKS 加密；known_hosts / 证书校验 |
-| 云帐号 Token | preferences + 自动 refresh + 服务端 refresh jti 轮换 | HUKS 加密存储（下一步） |
+| SSH | Mock + **Native 源码**（libssh2） | DevEco 链接 libssh2 后 `sshConnect` 可用；未链接时 Native connect 报错并回退 Mock |
+| FTP | Mock + **Native 自研 PASV** | 无需三方库；需编译 `.so` |
+| VNC | Mock + **Native RFB Raw** | None/VNC Auth；CopyRect 等为 TODO |
+| 凭据 / Token | **HUKS AES** 落盘 | 明文仅内存；迁移旧明文 |
+| 云端机密 | 可选保险柜 | 帐号页「同步加密密钥到云端」+ 口令 |
 
-工厂类（`SshSessionFactory` / `FtpSessionFactory` / `VncSessionFactory`）可按编译开关切换 Mock / Native，业务 UI 无需改动。
+详见 [`native/README.md`](./native/README.md)。设置页：「使用原生协议（需编译 native）」。
 
 ## 已知差距 /  backlog
 
 ### 已完成（本阶段）
 
-- 云端 auth 按 IP 速率限制（默认 20 次/分钟，超限 429）
-- 客户端 Mock / Account 注册与服务端统一密码最少 **8** 位
-- ThemeTokens 更广用于 HostListPanel 标题/链接与 Account 主操作（Settings 纯净风不变）
-- 同步冲突 UX：服务端较新且本地有数据时 toast「已从云端合并」；帐号页展示 `lastSyncAt`
-- Refresh token 轻量轮换：刷新时签发新 refresh，并将旧 jti 写入缓存 denylist
-- 服务端单测 / 集成冒烟：`strip_host_secrets`、速率限制、refresh 轮换（`cd server && cargo test`）
+- 云端 auth 速率限制、密码最少 8 位、同步冲突 UX、refresh jti 轮换、服务端单测
+- **NAPI 完整源码** `native/hmssh_native`（SSH/FTP/VNC）+ ArkTS Native*Session / 工厂回退 Mock
+- **HUKS** 加密 Token 与主机机密；HostStore 明文迁移；帐号页「云端密钥保险柜」
+- 服务端 `strip_host_secrets` 保留 `passwordEnc` / `privateKeyEnc`
 
-### 仍待
+### 仍待 / 需 DevEco
 
-- **真实 NAPI**：SSH（libssh2）/ FTP（libcurl 或自研）/ VNC（RFB + Surface）— 当前仅 Mock 接缝
-- **HUKS**：凭据与云 Token 加密落盘；加密后再同步主机机密（可选策略）— 当前 preferences 明文演示，主机密码/私钥默认不上云
-- VNC 无真实像素流；FTP 无真实传输与 TLS
-- 图标为占位；平板 / PC 多窗口与键鼠快捷键尚未打磨
-- 终端 ANSI 彩色与完整光标渲染尚未展开（当前 bg/fg/cursor 基础令牌）
-- 云同步出厂 Mock；真机在帐号页切「真实服务器」并填可达地址（需 cleartext/HTTP 或 HTTPS）
-- 未在本环境执行 DevEco/hvigor 实机编译（请以 DevEco 同步结果为准）
-- 分布式限流（多实例需 Redis 共享计数）；当前为进程内固定窗口
+- **链接 libssh2**：在 OHOS NDK 交叉编译并放入 `third_party/libssh2`（见 native/README）
+- VNC 更多编码（CopyRect/Tight/ZRLE）；FTP TLS；PixelMap 完整绘制链路打磨
+- known_hosts / 主机密钥校验
+- 图标；平板 / PC 多窗口与快捷键；终端 ANSI 彩色
+- 云同步出厂仍 Mock；真机切真实服务器
+- 本环境未跑 DevEco/hvigor；分布式限流需 Redis
 
 ## 许可
 

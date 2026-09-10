@@ -7,8 +7,8 @@ use crate::auth::jwt::Claims;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
 use axum::http::header::AUTHORIZATION;
+use axum::http::request::Parts;
 
 pub struct AuthUser(pub Claims);
 
@@ -31,6 +31,9 @@ impl FromRequestParts<AppState> for AuthUser {
             .ok_or_else(|| AppError::Unauthorized("expected Bearer token".into()))?;
 
         let claims = state.jwt.decode_access(token)?;
+        if auth::is_revoked(state, &claims.sub, claims.iat).await {
+            return Err(AppError::Unauthorized("session revoked".into()));
+        }
         Ok(AuthUser(claims))
     }
 }
@@ -44,6 +47,7 @@ pub fn router(state: AppState) -> axum::Router {
         .route("/api/v1/auth/register", post(auth::register))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/refresh", post(auth::refresh))
+        .route("/api/v1/auth/logout", post(auth::logout))
         .route("/api/v1/me", get(me::me))
         .route(
             "/api/v1/sync/hosts",

@@ -208,12 +208,7 @@ async fn get_blob(pool: &DbPool, table: &str, user_id: &str) -> AppResult<Option
     }))
 }
 
-async fn put_blob(
-    pool: &DbPool,
-    table: &str,
-    user_id: &str,
-    payload: &str,
-) -> AppResult<SyncBlob> {
+async fn put_blob(pool: &DbPool, table: &str, user_id: &str, payload: &str) -> AppResult<SyncBlob> {
     let now = chrono::Utc::now().timestamp_millis();
     // Upsert: try update then insert (portable across SQLite/PG/MySQL without ON CONFLICT dialect)
     let update_sql = format!("UPDATE {table} SET payload = ?, updated_at = ? WHERE user_id = ?");

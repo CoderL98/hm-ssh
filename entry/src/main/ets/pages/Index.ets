@@ -11,6 +11,7 @@ import { FtpBrowserView } from '../components/FtpBrowserView';
 import { VncSessionView } from '../components/VncSessionView';
 import { BreakpointHelper, WindowSizeState } from '../layout/Breakpoint';
 import { RouteNames } from '../common/Constants';
+import { maybePushAfterLocalChange } from '../services/CloudSyncService';
 
 /**
  * 主页：窄屏栈式导航；宽屏主从分栏。
@@ -171,6 +172,7 @@ struct Index {
             this.clearSelection();
           }
           this.reloadHosts();
+          void maybePushAfterLocalChange('hosts');
           promptAction.showToast({ message: $r('app.string.toast_deleted') });
         });
       }

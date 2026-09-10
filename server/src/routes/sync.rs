@@ -5,7 +5,7 @@ use crate::state::AppState;
 use axum::extract::State;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Debug, Serialize)]
 pub struct SyncGetResponse {
@@ -68,8 +68,10 @@ async fn get_sync(
     };
     match blob {
         Some(b) => {
-            let data: Value = serde_json::from_str(&b.payload)
-                .unwrap_or(Value::Null);
+            let mut data: Value = serde_json::from_str(&b.payload).unwrap_or(Value::Null);
+            if hosts {
+                data = strip_host_secrets(data);
+            }
             Ok(Json(SyncGetResponse {
                 data,
                 updated_at: b.updated_at,
@@ -93,15 +95,21 @@ async fn put_sync(
     hosts: bool,
 ) -> AppResult<Json<SyncPutResponse>> {
     let _ = body.client_updated_at;
-    if hosts && !body.data.is_array() {
-        return Err(AppError::BadRequest("hosts data must be a JSON array".into()));
-    }
-    if !hosts && !body.data.is_object() {
+    let mut data = body.data;
+    if hosts {
+        if !data.is_array() {
+            return Err(AppError::BadRequest(
+                "hosts data must be a JSON array".into(),
+            ));
+        }
+        // Defense in depth: never persist plaintext secrets server-side
+        data = strip_host_secrets(data);
+    } else if !data.is_object() {
         return Err(AppError::BadRequest(
             "settings data must be a JSON object".into(),
         ));
     }
-    let payload = serde_json::to_string(&body.data)
+    let payload = serde_json::to_string(&data)
         .map_err(|e| AppError::BadRequest(format!("invalid json: {e}")))?;
     let blob = if hosts {
         db::put_hosts(&state.pool, user_id, &payload).await?
@@ -109,7 +117,30 @@ async fn put_sync(
         db::put_settings(&state.pool, user_id, &payload).await?
     };
     Ok(Json(SyncPutResponse {
-        data: body.data,
+        data,
         updated_at: blob.updated_at,
     }))
+}
+
+/// Clear password / privateKey (and snake_case variants) on each host object.
+fn strip_host_secrets(data: Value) -> Value {
+    match data {
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| match item {
+                    Value::Object(mut map) => {
+                        for key in ["password", "privateKey", "private_key"] {
+                            if map.contains_key(key) {
+                                map.insert(key.to_string(), json!(""));
+                            }
+                        }
+                        Value::Object(map)
+                    }
+                    other => other,
+                })
+                .collect(),
+        ),
+        other => other,
+    }
 }

@@ -11,8 +11,9 @@ English + 中文说明如下。
 | `POST /api/v1/auth/register` | 注册 `{ email, username, password }` |
 | `POST /api/v1/auth/login` | 登录 `{ login\|email\|username, password }` → JWT |
 | `POST /api/v1/auth/refresh` | 刷新 `{ refresh_token }` |
+| `POST /api/v1/auth/logout` | 注销（吊销会话缓存，需 Bearer） |
 | `GET /api/v1/me` | 当前用户（需 Bearer） |
-| `GET/PUT /api/v1/sync/hosts` | 主机列表 JSON 同步 |
+| `GET/PUT /api/v1/sync/hosts` | 主机列表 JSON 同步（服务端剥离 password/privateKey） |
 | `GET/PUT /api/v1/sync/settings` | 主题/设置 JSON 同步 |
 | `GET /health` | 健康检查 |
 
@@ -78,6 +79,12 @@ docker run --rm -p 8080:8080 \
 - 每个资源（hosts / settings）存一份 JSON + 服务端 `updated_at`（Unix ms）。
 - **Last-write-wins**：客户端以服务端时间戳为准；`PUT` 会覆盖并更新 `updated_at`。
 - 客户端合并策略见仓库根 README「云同步」：按条目 `updatedAt` 取较新者，再推回服务端。
+- **Secrets**：`PUT /sync/hosts` 会清空每条主机的 `password` / `privateKey`（及 `private_key`）后再落库；GET 同样保证不回传明文机密。
+
+## Session invalidation / 会话吊销
+
+- 登录/刷新写入 `sess:` / `profile:` 缓存（内存 moka 按条目 TTL；Redis 用 `SET EX`）。
+- `POST /auth/logout` 写入 `revoke:{userId}` 并删除会话缓存；之后该用户在吊销前签发的 access/refresh 均被拒绝。
 
 ## Example curl
 

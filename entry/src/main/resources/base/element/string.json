@@ -302,7 +302,7 @@
     },
     {
       "name": "account_mock_hint",
-      "value": "当前为 Mock 帐号（离线）。对接云端请将 CloudConfig.USE_MOCK 设为 false。"
+      "value": "当前为 Mock 帐号（离线）。可在上方切换为真实服务器。"
     },
     {
       "name": "account_server",
@@ -314,7 +314,31 @@
     },
     {
       "name": "account_huks_note",
-      "value": "Token 现存储于 preferences，后续将迁入 HUKS 安全存储。本地 HostStore 不受影响，云同步为附加能力。"
+      "value": "Token 现存储于 preferences，后续将迁入 HUKS。主机密码/私钥默认不上云。本地 HostStore 仍是离线真相源。"
+    },
+    {
+      "name": "account_backend",
+      "value": "云端后端"
+    },
+    {
+      "name": "account_backend_hint",
+      "value": "Mock 无需服务器；真实模式对接 Rust 云端。切换会退出当前登录。"
+    },
+    {
+      "name": "account_backend_mock",
+      "value": "Mock（离线演示）"
+    },
+    {
+      "name": "account_backend_real",
+      "value": "真实服务器"
+    },
+    {
+      "name": "account_secrets_note",
+      "value": "安全：主机密码与私钥默认不同步到云端，仅保存在本机。"
+    },
+    {
+      "name": "account_sync_loading",
+      "value": "同步中…"
     }
   ]
 }

@@ -6,7 +6,7 @@ import { CloudSyncServiceFactory } from '../services/CloudSyncService';
 import { CloudConfig } from '../common/Constants';
 
 /**
- * 帐号：登录 / 注册（设置纯净风）+ 云同步操作。
+ * 帐号：登录 / 注册 + Mock/真实服务器切换 + 云同步。
  */
 @Entry
 @Component
@@ -18,6 +18,7 @@ struct AccountPage {
   @State username: string = '';
   @State password: string = '';
   @State baseUrl: string = CloudConfig.DEFAULT_BASE_URL;
+  @State useMock: boolean = true;
   @State busy: boolean = false;
   @State statusText: string = '';
   @State loggedIn: boolean = false;
@@ -26,6 +27,7 @@ struct AccountPage {
   aboutToAppear(): void {
     const store = AuthStore.getInstance();
     this.baseUrl = store.getBaseUrl();
+    this.useMock = store.isUseMock();
     this.refreshSession();
   }
 
@@ -33,6 +35,7 @@ struct AccountPage {
     void this.authRev;
     const store = AuthStore.getInstance();
     this.loggedIn = store.isLoggedIn();
+    this.useMock = store.isUseMock();
     const u = store.getUser();
     this.displayName = u ? `${u.username}（${u.email}）` : '';
   }
@@ -75,6 +78,26 @@ struct AccountPage {
     }
   }
 
+  private async toggleMock(next: boolean): Promise<void> {
+    if (this.busy) {
+      return;
+    }
+    this.busy = true;
+    try {
+      const store = AuthStore.getInstance();
+      // 切换后端时清会话，避免 Mock token 打到真实服务器
+      if (store.isLoggedIn()) {
+        await AuthServiceFactory.create().logout();
+      }
+      await store.setUseMock(next);
+      this.useMock = next;
+      this.refreshSession();
+      this.toast(next ? '已切换为 Mock（离线）' : '已切换为真实服务器');
+    } finally {
+      this.busy = false;
+    }
+  }
+
   private async doLogin(): Promise<void> {
     if (this.busy) {
       return;
@@ -82,7 +105,9 @@ struct AccountPage {
     this.busy = true;
     this.statusText = '';
     try {
-      await AuthStore.getInstance().setBaseUrl(this.baseUrl);
+      if (!this.useMock) {
+        await AuthStore.getInstance().setBaseUrl(this.baseUrl);
+      }
       const auth = AuthServiceFactory.create();
       const loginId = this.mode === 'register' ? this.email : (this.email || this.username);
       if (this.mode === 'register') {
@@ -92,7 +117,6 @@ struct AccountPage {
       }
       this.refreshSession();
       this.toast(this.mode === 'register' ? '注册并登录成功' : '登录成功');
-      // 登录后自动同步
       try {
         const msg = await CloudSyncServiceFactory.create().syncAll();
         this.statusText = msg;
@@ -111,9 +135,18 @@ struct AccountPage {
   }
 
   private async doLogout(): Promise<void> {
-    await AuthServiceFactory.create().logout();
-    this.refreshSession();
-    this.toast('已退出登录');
+    if (this.busy) {
+      return;
+    }
+    this.busy = true;
+    try {
+      await AuthServiceFactory.create().logout();
+      this.refreshSession();
+      this.statusText = '';
+      this.toast('已退出登录');
+    } finally {
+      this.busy = false;
+    }
   }
 
   private async doSync(): Promise<void> {
@@ -121,6 +154,7 @@ struct AccountPage {
       return;
     }
     this.busy = true;
+    this.statusText = '同步中…';
     try {
       const msg = await CloudSyncServiceFactory.create().syncAll();
       this.statusText = msg;
@@ -158,6 +192,79 @@ struct AccountPage {
 
       Scroll() {
         Column({ space: 16 }) {
+          // Mock / 真实服务器切换（始终可见）
+          this.sectionTitle($r('app.string.account_backend'))
+          Column() {
+            Text($r('app.string.account_backend_hint'))
+              .fontSize(13)
+              .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+            Row() {
+              Text($r('app.string.account_backend_mock'))
+                .fontSize(16)
+                .fontColor(this.useMock ? this.accent() : this.textPrimary())
+                .layoutWeight(1)
+              if (this.useMock) {
+                Text('✓').fontSize(18).fontColor(this.accent())
+              }
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+            .onClick(() => {
+              if (!this.useMock) {
+                this.toggleMock(true);
+              }
+            })
+            Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
+            Row() {
+              Text($r('app.string.account_backend_real'))
+                .fontSize(16)
+                .fontColor(!this.useMock ? this.accent() : this.textPrimary())
+                .layoutWeight(1)
+              if (!this.useMock) {
+                Text('✓').fontSize(18).fontColor(this.accent())
+              }
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+            .onClick(() => {
+              if (this.useMock) {
+                this.toggleMock(false);
+              }
+            })
+          }
+          .width('100%')
+          .backgroundColor(this.surfaceCard())
+          .borderRadius($r('app.float.card_radius'))
+          .clip(true)
+
+          if (!this.useMock) {
+            this.sectionTitle($r('app.string.account_server'))
+            Column() {
+              Text($r('app.string.account_server_hint'))
+                .fontSize(13)
+                .fontColor(this.textSecondary())
+                .width('100%')
+                .padding({ left: 16, right: 16, top: 12, bottom: 8 })
+              TextInput({ text: this.baseUrl, placeholder: 'http://192.168.x.x:8080' })
+                .width('100%')
+                .height(44)
+                .fontSize(15)
+                .fontColor(this.textPrimary())
+                .backgroundColor(Color.Transparent)
+                .padding({ left: 16, right: 16 })
+                .onChange((v: string) => {
+                  this.baseUrl = v;
+                })
+                .margin({ bottom: 12 })
+            }
+            .width('100%')
+            .backgroundColor(this.surfaceCard())
+            .borderRadius($r('app.float.card_radius'))
+            .clip(true)
+          }
+
           if (this.loggedIn) {
             this.sectionTitle($r('app.string.account_signed_in'))
             Column() {
@@ -166,20 +273,26 @@ struct AccountPage {
                 .fontColor(this.textPrimary())
                 .width('100%')
                 .padding({ left: 16, right: 16, top: 14, bottom: 8 })
-              Text(CloudConfig.USE_MOCK ? $r('app.string.account_mock_hint') : $r('app.string.account_sync_hint'))
+              Text(this.useMock ? $r('app.string.account_mock_hint') : $r('app.string.account_sync_hint'))
                 .fontSize(13)
+                .fontColor(this.textSecondary())
+                .width('100%')
+                .padding({ left: 16, right: 16, bottom: 8 })
+              Text($r('app.string.account_secrets_note'))
+                .fontSize(12)
                 .fontColor(this.textSecondary())
                 .width('100%')
                 .padding({ left: 16, right: 16, bottom: 12 })
               Divider().color(this.divider()).strokeWidth(0.5).margin({ left: 16 })
               Row() {
-                Text($r('app.string.account_sync_now'))
+                Text(this.busy ? $r('app.string.account_busy') : $r('app.string.account_sync_now'))
                   .fontSize(16)
                   .fontColor(this.accent())
                   .layoutWeight(1)
               }
               .width('100%')
               .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+              .opacity(this.busy ? 0.5 : 1)
               .onClick(() => {
                 this.doSync();
               })
@@ -259,6 +372,7 @@ struct AccountPage {
               }
               .width('100%')
               .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+              .opacity(this.busy ? 0.5 : 1)
               .onClick(() => {
                 this.doLogin();
               })
@@ -267,38 +381,20 @@ struct AccountPage {
             .backgroundColor(this.surfaceCard())
             .borderRadius($r('app.float.card_radius'))
             .clip(true)
-
-            if (!CloudConfig.USE_MOCK) {
-              this.sectionTitle($r('app.string.account_server'))
-              Column() {
-                Text($r('app.string.account_server_hint'))
-                  .fontSize(13)
-                  .fontColor(this.textSecondary())
-                  .width('100%')
-                  .padding({ left: 16, right: 16, top: 12, bottom: 8 })
-                TextInput({ text: this.baseUrl, placeholder: 'http://192.168.x.x:8080' })
-                  .width('100%')
-                  .height(44)
-                  .fontSize(15)
-                  .fontColor(this.textPrimary())
-                  .backgroundColor(Color.Transparent)
-                  .padding({ left: 16, right: 16 })
-                  .onChange((v: string) => {
-                    this.baseUrl = v;
-                  })
-                  .margin({ bottom: 12 })
-              }
-              .width('100%')
-              .backgroundColor(this.surfaceCard())
-              .borderRadius($r('app.float.card_radius'))
-              .clip(true)
-            }
           }
 
           if (this.statusText.length > 0) {
             Text(this.statusText)
               .fontSize(12)
               .fontColor(this.textSecondary())
+              .width('100%')
+              .padding({ left: 4, right: 4 })
+          }
+
+          if (this.busy) {
+            Text($r('app.string.account_busy'))
+              .fontSize(12)
+              .fontColor(this.accent())
               .width('100%')
               .padding({ left: 4, right: 4 })
           }

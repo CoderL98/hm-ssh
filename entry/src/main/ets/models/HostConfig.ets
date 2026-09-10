@@ -114,6 +114,30 @@ export class HostConfig {
     };
   }
 
+  /**
+   * 云同步载荷：默认排除 password / privateKey（本地-only 机密）。
+   * 合并远端时若云端字段为空，保留本地机密。
+   */
+  toCloudJson(): HostJson {
+    const j = this.toJson();
+    j.password = '';
+    j.privateKey = '';
+    return j;
+  }
+
+  /** 若本条机密为空而 other 有值，则拷贝本地机密到 this */
+  absorbLocalSecrets(other: HostConfig | undefined): void {
+    if (!other) {
+      return;
+    }
+    if ((!this.password || this.password.length === 0) && other.password) {
+      this.password = other.password;
+    }
+    if ((!this.privateKey || this.privateKey.length === 0) && other.privateKey) {
+      this.privateKey = other.privateKey;
+    }
+  }
+
   static fromJson(json: HostJson): HostConfig {
     const c = new HostConfig();
     c.id = json.id ?? '';

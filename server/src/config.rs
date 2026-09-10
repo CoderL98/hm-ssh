@@ -106,8 +106,7 @@ fn load_toml() -> Result<TomlConfig> {
     if !Path::new(&path).exists() {
         return Ok(TomlConfig::default());
     }
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("read config {}", path))?;
+    let text = fs::read_to_string(&path).with_context(|| format!("read config {}", path))?;
     let cfg: TomlConfig = toml::from_str(&text).context("parse config.toml")?;
     Ok(cfg)
 }

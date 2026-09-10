@@ -3,6 +3,7 @@ import { HostConfig, HostProtocol } from '../models/HostConfig';
 import { HostStore } from '../services/HostStore';
 import { ThemeStore } from '../services/ThemeStore';
 import { ThemeTokens } from '../theme/ThemeTokens';
+import { maybePushAfterLocalChange } from '../services/CloudSyncService';
 
 /**
  * 主机编辑：设置表单风格 —— 顶栏取消/保存文字操作 + 白色分组字段。
@@ -323,6 +324,8 @@ struct HostEditPage {
       ? (this.remotePath.trim().length > 0 ? this.remotePath.trim() : '/')
       : '/';
     await HostStore.getInstance().upsert(config);
+    // 登录态后台推送（不含密码/私钥）
+    void maybePushAfterLocalChange('hosts');
     promptAction.showToast({ message: $r('app.string.toast_saved') });
     router.back();
   }

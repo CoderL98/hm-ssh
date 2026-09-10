@@ -42,10 +42,7 @@ impl IntoResponse for AppError {
             }
             AppError::Sqlx(e) => {
                 tracing::error!("sqlx: {e:#}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "database error".into(),
-                )
+                (StatusCode::INTERNAL_SERVER_ERROR, "database error".into())
             }
         };
         (status, Json(ErrorBody { error: msg })).into_response()

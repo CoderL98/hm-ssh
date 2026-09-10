@@ -34,7 +34,8 @@ async fn main() -> anyhow::Result<()> {
         "starting hm-ssh-server"
     );
 
-    let pool = db::connect(&config.database_url).await
+    let pool = db::connect(&config.database_url)
+        .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let jwt = Arc::new(JwtKeys::new(

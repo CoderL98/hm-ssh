@@ -2,6 +2,7 @@ import { router } from '@kit.ArkUI';
 import { RouteNames } from '../common/Constants';
 import { AuthStore } from '../services/AuthService';
 import { ThemeStore } from '../services/ThemeStore';
+import { maybePushAfterLocalChange } from '../services/CloudSyncService';
 import {
   AccentId,
   AccentPreset,
@@ -39,7 +40,7 @@ struct SettingsPage {
       const u = auth.getUser();
       this.accountSubtitle = u ? u.username : '已登录';
     } else {
-      this.accountSubtitle = '登录以同步主机与设置';
+      this.accountSubtitle = '登录以同步主机与设置'; // mirrors account_entry_subtitle
     }
   }
 
@@ -137,11 +138,11 @@ struct SettingsPage {
 
           this.sectionTitle($r('app.string.settings_appearance'))
           Column() {
-            this.modeRow('浅色', 'light')
+            this.modeRow($r('app.string.theme_mode_light'), 'light')
             this.thinDivider()
-            this.modeRow('深色', 'dark')
+            this.modeRow($r('app.string.theme_mode_dark'), 'dark')
             this.thinDivider()
-            this.modeRow('跟随系统', 'system')
+            this.modeRow($r('app.string.theme_mode_system'), 'system')
           }
           .width('100%')
           .backgroundColor(this.surfaceCard())
@@ -239,7 +240,7 @@ struct SettingsPage {
   }
 
   @Builder
-  modeRow(label: string, value: ThemeMode) {
+  modeRow(label: Resource, value: ThemeMode) {
     Row() {
       Text(label)
         .fontSize(16)
@@ -256,6 +257,7 @@ struct SettingsPage {
     .onClick(() => {
       ThemeStore.getInstance().setThemeMode(value).then(() => {
         this.mode = value;
+        void maybePushAfterLocalChange('settings');
       });
     })
   }
@@ -293,6 +295,7 @@ struct SettingsPage {
     .onClick(() => {
       ThemeStore.getInstance().setAccentId(preset.id).then(() => {
         this.accentId = preset.id;
+        void maybePushAfterLocalChange('settings');
       });
     })
   }
@@ -330,6 +333,7 @@ struct SettingsPage {
     .onClick(() => {
       ThemeStore.getInstance().setTerminalSchemeId(scheme.id).then(() => {
         this.schemeId = scheme.id;
+        void maybePushAfterLocalChange('settings');
       });
     })
   }

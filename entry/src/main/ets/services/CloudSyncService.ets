@@ -4,7 +4,6 @@ import { HostConfig, HostJson } from '../models/HostConfig';
 import { HostStore } from './HostStore';
 import { ThemeStore, CloudSettingsJson } from './ThemeStore';
 import { AuthStore, cloudRequest } from './AuthService';
-import { CloudConfig } from '../common/Constants';
 
 const META_STORE = 'hm_ssh_sync_meta';
 const KEY_HOSTS_TS = 'hosts_server_updated_at';
@@ -25,6 +24,9 @@ export interface SyncBlobResult {
  * 3. 主机列表按 `id` 合并：同一 id 取 `updatedAt` 较大者；仅一侧存在的条目保留。
  * 4. 合并后再 PUT 回服务端（使云端与本地一致）。
  * 5. 设置 JSON 整包：服务端较新则整包应用；否则上传本地。
+ *
+ * ## 机密字段
+ * 默认 **不** 将 `password` / `privateKey` 上传云端；合并时若云端为空则保留本地机密。
  *
  * HostStore 仍是本地真相源；云同步为 additive，不改变未登录行为。
  */
@@ -64,9 +66,8 @@ export class HttpCloudSyncService implements ICloudSyncService {
     const localList = store.getAll();
 
     if (serverTs === 0 || !Array.isArray(data)) {
-      // 云端空 → 上传本地
       await this.pushHosts();
-      return '主机：云端为空，已上传本地';
+      return '主机：云端为空，已上传本地（不含密码/私钥）';
     }
 
     const remoteJson = data as HostJson[];
@@ -76,14 +77,12 @@ export class HttpCloudSyncService implements ICloudSyncService {
       const merged = mergeHostsByUpdatedAt(localList, remoteHosts);
       await store.replaceAll(merged);
       await this.setMeta(KEY_HOSTS_TS, serverTs);
-      // 合并结果推回，保证两端一致
       await this.pushHostsInternal(token);
       return `主机：已按服务端时间合并（${merged.length} 条）`;
     }
 
-    // 本地较新或相等 → 推本地
     await this.pushHostsInternal(token);
-    return '主机：已上传本地到云端';
+    return '主机：已上传本地到云端（不含密码/私钥）';
   }
 
   async pushHosts(): Promise<string> {
@@ -92,11 +91,12 @@ export class HttpCloudSyncService implements ICloudSyncService {
       throw new Error('未登录');
     }
     await this.pushHostsInternal(token);
-    return '主机：已上传';
+    return '主机：已上传（不含密码/私钥）';
   }
 
   private async pushHostsInternal(token: string): Promise<void> {
-    const list: HostJson[] = HostStore.getInstance().getAll().map((h: HostConfig) => h.toJson());
+    // 默认排除机密字段，避免明文密码/私钥上云
+    const list: HostJson[] = HostStore.getInstance().getAll().map((h: HostConfig) => h.toCloudJson());
     const raw = await cloudRequest('PUT', '/api/v1/sync/hosts', {
       data: list,
       client_updated_at: Date.now()
@@ -199,10 +199,10 @@ export class MockCloudSyncService implements ICloudSyncService {
   }
 
   async pushHosts(): Promise<string> {
-    const list = HostStore.getInstance().getAll().map((h: HostConfig) => h.toJson());
+    const list = HostStore.getInstance().getAll().map((h: HostConfig) => h.toCloudJson());
     MockCloudSyncService.hostsBlob = JSON.stringify(list);
     MockCloudSyncService.hostsTs = Date.now();
-    return '主机：已写入 Mock 云端';
+    return '主机：已写入 Mock 云端（不含密码/私钥）';
   }
 
   async pullAndMergeSettings(): Promise<string> {
@@ -225,19 +225,19 @@ export class MockCloudSyncService implements ICloudSyncService {
 export class CloudSyncServiceFactory {
   private static httpInst: HttpCloudSyncService | null = null;
   private static mockInst: MockCloudSyncService | null = null;
+  private static context: common.Context | null = null;
 
   static async init(context: common.Context): Promise<void> {
-    if (CloudConfig.USE_MOCK) {
-      CloudSyncServiceFactory.mockInst = new MockCloudSyncService();
-      await CloudSyncServiceFactory.mockInst.init(context);
-    } else {
-      CloudSyncServiceFactory.httpInst = new HttpCloudSyncService();
-      await CloudSyncServiceFactory.httpInst.init(context);
-    }
+    CloudSyncServiceFactory.context = context;
+    CloudSyncServiceFactory.mockInst = new MockCloudSyncService();
+    await CloudSyncServiceFactory.mockInst.init(context);
+    CloudSyncServiceFactory.httpInst = new HttpCloudSyncService();
+    await CloudSyncServiceFactory.httpInst.init(context);
   }
 
   static create(): ICloudSyncService {
-    if (CloudConfig.USE_MOCK) {
+    const useMock = AuthStore.getInstance().isUseMock();
+    if (useMock) {
       if (!CloudSyncServiceFactory.mockInst) {
         CloudSyncServiceFactory.mockInst = new MockCloudSyncService();
       }
@@ -250,17 +250,43 @@ export class CloudSyncServiceFactory {
   }
 }
 
-/** 按 host.id 合并，updatedAt 较大者胜出 */
+/**
+ * 登录态下本地变更后的后台推送（失败静默，不打断 UI）。
+ */
+export async function maybePushAfterLocalChange(kind: 'hosts' | 'settings'): Promise<void> {
+  const auth = AuthStore.getInstance();
+  if (!auth.isLoggedIn()) {
+    return;
+  }
+  try {
+    const svc = CloudSyncServiceFactory.create();
+    if (kind === 'hosts') {
+      await svc.pushHosts();
+    } else {
+      await svc.pushSettings();
+    }
+  } catch (_e) {
+    // 后台同步失败不影响本地保存
+  }
+}
+
+/** 按 host.id 合并，updatedAt 较大者胜出；云端空机密时保留本地 password/privateKey */
 export function mergeHostsByUpdatedAt(local: HostConfig[], remote: HostConfig[]): HostConfig[] {
+  const localById = new Map<string, HostConfig>();
+  local.forEach((h: HostConfig) => localById.set(h.id, h));
+
   const map = new Map<string, HostConfig>();
   const ingest = (h: HostConfig) => {
     const prev = map.get(h.id);
     if (!prev || h.updatedAt >= prev.updatedAt) {
-      map.set(h.id, h);
+      const copy = h.clone();
+      copy.absorbLocalSecrets(localById.get(h.id));
+      // 若胜出者来自远端且机密空，也尝试从 prev（可能是本地）吸收
+      copy.absorbLocalSecrets(prev);
+      map.set(h.id, copy);
     }
   };
   local.forEach(ingest);
   remote.forEach(ingest);
   return Array.from(map.values()).sort((a: HostConfig, b: HostConfig) => b.updatedAt - a.updatedAt);
 }
-

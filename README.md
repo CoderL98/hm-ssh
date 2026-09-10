@@ -140,15 +140,17 @@ hm-ssh/
 
 ### 帐号与云同步
 
-入口：**设置 → 帐号**（`AccountPage`）。默认 `CloudConfig.USE_MOCK = true`（离线 Mock 登录）；对接真实服务时改为 `false`，并配置服务器基址（帐号页或 `CloudConfig.DEFAULT_BASE_URL`）。
+入口：**设置 → 帐号**（`AccountPage`）。出厂默认 Mock（`CloudConfig.USE_MOCK`）；**帐号页可运行时切换** Mock / 真实服务器并填写基址（持久化到 `AuthStore`）。
 
 | 组件 | 说明 |
 | --- | --- |
-| `AuthService` | `IAuthService` + `HttpAuthService` / `MockAuthService`；JWT 存 preferences（**HUKS 为后续**） |
-| `CloudSyncService` | `GET/PUT /api/v1/sync/hosts` 与 `/settings`；登录后可「立即同步」 |
-| `server/` | Rust 云端：注册/登录、SQLite（默认可换 PG/MySQL）、内存缓存（可换 Redis） |
+| `AuthService` | `IAuthService` + `HttpAuthService` / `MockAuthService`；JWT + refresh 存 preferences（**HUKS 为后续**）；HTTP 请求自动 refresh |
+| `CloudSyncService` | `GET/PUT /api/v1/sync/hosts` 与 `/settings`；登录后自动同步；主机保存/删除与主题变更后台推送 |
+| `server/` | Rust 云端：注册/登录/refresh/logout、SQLite（默认可换 PG/MySQL）、内存/Redis 缓存 |
 
 **合并策略（last-write-wins）**：以服务端资源级 `updated_at`（Unix ms）为权威；主机列表按 `id` 合并，同一 id 取本地/远端 `updatedAt` 较大者；设置 JSON 整包采用较新一侧。本地 `HostStore` 仍是离线真相源，云同步为 **additive**。
+
+**机密不上云**：同步载荷默认清空 `password` / `privateKey`（客户端 `toCloudJson` + 服务端再剥离）；合并时若云端为空则保留本机密。
 
 启动云端见 [`server/README.md`](./server/README.md)：
 
@@ -167,18 +169,18 @@ cargo run                          # http://0.0.0.0:8080
 | FTP | `MockFtpSession` 内存 FS | NAPI + **libcurl** 或自研 FTP：LIST / CWD / RETR / STOR |
 | VNC | `MockVncSession` 占位画布 + 输入 stub | NAPI + **RFB** 解码（LibVNCClient 等）+ Surface 渲染与键鼠注入 |
 | 凭据 | preferences 明文 | HUKS 加密；known_hosts / 证书校验 |
-| 云帐号 Token | preferences | HUKS；可选 refresh 轮换 |
+| 云帐号 Token | preferences + 自动 refresh | HUKS；refresh 轮换已接服务端 |
 
 工厂类（`SshSessionFactory` / `FtpSessionFactory` / `VncSessionFactory`）可按编译开关切换 Mock / Native，业务 UI 无需改动。
 
 ## 已知差距
 
 - 非真实网络协议，仅 Mock  
-- 密码明文 preferences（仅演示）；云 Token 亦在 preferences（待 HUKS）  
+- 密码明文 preferences（仅演示，且**默认不同步到云端**）；云 Token 亦在 preferences（待 HUKS）  
 - VNC 无真实像素流；FTP 无真实传输与 TLS  
 - 图标为占位；平板 / PC 多窗口与键鼠快捷键尚未打磨  
 - 终端 ANSI 彩色与完整光标渲染尚未展开（当前 bg/fg/cursor 基础令牌）  
-- 云同步默认 Mock；真机需可达的 `server` 地址与 `USE_MOCK=false`  
+- 云同步出厂 Mock；真机在帐号页切「真实服务器」并填可达地址（需 cleartext/HTTP 或 HTTPS）  
 - 未在本环境执行 DevEco/hvigor 实机编译（请以 DevEco 同步结果为准）
 
 ## 许可

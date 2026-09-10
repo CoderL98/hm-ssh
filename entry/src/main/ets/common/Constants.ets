@@ -14,13 +14,12 @@ export class RouteNames {
 }
 
 /**
- * 云端服务配置。
- * USE_MOCK=true 时走本地 Mock（无需 server）；联调真实服务时改为 false 并设置 DEFAULT_BASE_URL。
+ * 云端服务默认配置。
+ * USE_MOCK 为出厂默认；运行时可在「帐号」页切换 Mock / 真实服务器（写入 AuthStore）。
  */
 export class CloudConfig {
-  /** 开发默认：Mock 离线帐号；改为 false 对接 Rust server */
+  /** 出厂默认：Mock 离线帐号；帐号页可改为对接 Rust server */
   static readonly USE_MOCK: boolean = true;
   /** 真机请改为电脑局域网 IP；模拟器视环境使用 10.0.2.2 或本机 */
   static readonly DEFAULT_BASE_URL: string = 'http://127.0.0.1:8080';
 }
-

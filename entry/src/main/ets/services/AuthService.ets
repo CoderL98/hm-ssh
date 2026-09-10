@@ -6,9 +6,14 @@ import { CloudConfig } from '../common/Constants';
 const STORE_NAME = 'hm_ssh_auth';
 const KEY_ACCESS = 'access_token';
 const KEY_REFRESH = 'refresh_token';
+const KEY_EXPIRES = 'expires_at';
 const KEY_USER_JSON = 'user_json';
 const KEY_BASE_URL = 'cloud_base_url';
+const KEY_USE_MOCK = 'use_mock';
 const AUTH_REV_KEY = 'authRev';
+
+/** 提前多少秒刷新 access token */
+const REFRESH_SKEW_SECS = 60;
 
 export interface CloudUser {
   id: string;
@@ -29,6 +34,7 @@ export interface IAuthService {
   login(login: string, password: string): Promise<AuthTokens>;
   me(): Promise<CloudUser>;
   logout(): Promise<void>;
+  refresh?(): Promise<AuthTokens>;
 }
 
 /**
@@ -41,9 +47,12 @@ export class AuthStore {
   private ready: boolean = false;
   private accessToken: string = '';
   private refreshToken: string = '';
+  private expiresAt: number = 0;
   private user: CloudUser | null = null;
   private baseUrl: string = CloudConfig.DEFAULT_BASE_URL;
+  private useMock: boolean = CloudConfig.USE_MOCK;
   private revision: number = 0;
+  private refreshInFlight: Promise<boolean> | null = null;
 
   static getInstance(): AuthStore {
     if (!AuthStore.instance) {
@@ -59,7 +68,10 @@ export class AuthStore {
     this.pref = await preferences.getPreferences(context, STORE_NAME);
     this.accessToken = await this.pref.get(KEY_ACCESS, '') as string;
     this.refreshToken = await this.pref.get(KEY_REFRESH, '') as string;
+    this.expiresAt = Number(await this.pref.get(KEY_EXPIRES, 0));
     this.baseUrl = await this.pref.get(KEY_BASE_URL, CloudConfig.DEFAULT_BASE_URL) as string;
+    const mockRaw = await this.pref.get(KEY_USE_MOCK, CloudConfig.USE_MOCK ? '1' : '0') as string;
+    this.useMock = mockRaw === '1' || mockRaw === 'true';
     const raw = await this.pref.get(KEY_USER_JSON, '') as string;
     if (raw && raw.length > 0) {
       try {
@@ -84,12 +96,20 @@ export class AuthStore {
     return this.refreshToken;
   }
 
+  getExpiresAt(): number {
+    return this.expiresAt;
+  }
+
   getUser(): CloudUser | null {
     return this.user;
   }
 
   getBaseUrl(): string {
     return this.baseUrl;
+  }
+
+  isUseMock(): boolean {
+    return this.useMock;
   }
 
   async setBaseUrl(url: string): Promise<void> {
@@ -99,11 +119,24 @@ export class AuthStore {
     }
     await this.pref.put(KEY_BASE_URL, this.baseUrl);
     await this.pref.flush();
+    this.publish();
+  }
+
+  async setUseMock(value: boolean): Promise<void> {
+    this.useMock = value;
+    if (!this.pref) {
+      this.publish();
+      return;
+    }
+    await this.pref.put(KEY_USE_MOCK, value ? '1' : '0');
+    await this.pref.flush();
+    this.publish();
   }
 
   async saveSession(tokens: AuthTokens): Promise<void> {
     this.accessToken = tokens.accessToken;
     this.refreshToken = tokens.refreshToken;
+    this.expiresAt = tokens.expiresAt;
     this.user = tokens.user;
     if (!this.pref) {
       this.publish();
@@ -111,6 +144,7 @@ export class AuthStore {
     }
     await this.pref.put(KEY_ACCESS, this.accessToken);
     await this.pref.put(KEY_REFRESH, this.refreshToken);
+    await this.pref.put(KEY_EXPIRES, this.expiresAt);
     await this.pref.put(KEY_USER_JSON, JSON.stringify(this.user));
     await this.pref.flush();
     this.publish();
@@ -119,14 +153,78 @@ export class AuthStore {
   async clearSession(): Promise<void> {
     this.accessToken = '';
     this.refreshToken = '';
+    this.expiresAt = 0;
     this.user = null;
     if (this.pref) {
       await this.pref.put(KEY_ACCESS, '');
       await this.pref.put(KEY_REFRESH, '');
+      await this.pref.put(KEY_EXPIRES, 0);
       await this.pref.put(KEY_USER_JSON, '');
       await this.pref.flush();
     }
     this.publish();
+  }
+
+  /** access 是否即将过期（需 refresh） */
+  isAccessExpiringSoon(): boolean {
+    if (!this.expiresAt || this.expiresAt <= 0) {
+      return false;
+    }
+    const nowSecs = Math.floor(Date.now() / 1000);
+    return nowSecs >= (this.expiresAt - REFRESH_SKEW_SECS);
+  }
+
+  /**
+   * 确保 access token 可用：临近过期时用 refresh_token 换新。
+   * 并发调用会复用同一 in-flight Promise。
+   */
+  async ensureFreshAccessToken(): Promise<string> {
+    if (this.useMock) {
+      return this.accessToken;
+    }
+    if (!this.accessToken) {
+      return '';
+    }
+    if (!this.isAccessExpiringSoon()) {
+      return this.accessToken;
+    }
+    if (!this.refreshToken) {
+      return this.accessToken;
+    }
+    const ok = await this.runRefresh();
+    if (!ok) {
+      throw new Error('登录已过期，请重新登录');
+    }
+    return this.accessToken;
+  }
+
+  async forceRefresh(): Promise<boolean> {
+    if (this.useMock || !this.refreshToken) {
+      return false;
+    }
+    return this.runRefresh();
+  }
+
+  private async runRefresh(): Promise<boolean> {
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+    this.refreshInFlight = (async () => {
+      try {
+        const raw = await cloudRequestRaw('POST', '/api/v1/auth/refresh', {
+          refresh_token: this.refreshToken
+        }, null);
+        const tokens = parseAuthResponse(raw);
+        await this.saveSession(tokens);
+        return true;
+      } catch (_e) {
+        await this.clearSession();
+        return false;
+      } finally {
+        this.refreshInFlight = null;
+      }
+    })();
+    return this.refreshInFlight;
   }
 
   private publish(): void {
@@ -156,9 +254,23 @@ export class HttpAuthService implements IAuthService {
     });
   }
 
+  async refresh(): Promise<AuthTokens> {
+    const store = AuthStore.getInstance();
+    const rt = store.getRefreshToken();
+    if (!rt) {
+      throw new Error('无 refresh token');
+    }
+    const raw = await cloudRequestRaw('POST', '/api/v1/auth/refresh', {
+      refresh_token: rt
+    }, null);
+    const tokens = parseAuthResponse(raw);
+    await store.saveSession(tokens);
+    return tokens;
+  }
+
   async me(): Promise<CloudUser> {
     const store = AuthStore.getInstance();
-    const token = store.getAccessToken();
+    const token = await store.ensureFreshAccessToken();
     if (!token) {
       throw new Error('未登录');
     }
@@ -167,24 +279,21 @@ export class HttpAuthService implements IAuthService {
   }
 
   async logout(): Promise<void> {
-    await AuthStore.getInstance().clearSession();
+    const store = AuthStore.getInstance();
+    const token = store.getAccessToken();
+    if (token) {
+      try {
+        await cloudRequestRaw('POST', '/api/v1/auth/logout', {}, token);
+      } catch (_e) {
+        // 服务端登出失败仍清本地
+      }
+    }
+    await store.clearSession();
   }
 
   private async postAuth(path: string, body: object): Promise<AuthTokens> {
-    const raw = await cloudRequest('POST', path, body, null);
-    const obj = JSON.parse(raw) as Record<string, Object>;
-    const userObj = obj['user'] as Record<string, Object>;
-    const tokens: AuthTokens = {
-      accessToken: `${obj['access_token']}`,
-      refreshToken: `${obj['refresh_token']}`,
-      expiresAt: Number(obj['expires_at'] ?? 0),
-      user: {
-        id: `${userObj['id']}`,
-        email: `${userObj['email']}`,
-        username: `${userObj['username']}`,
-        created_at: Number(userObj['created_at'] ?? 0)
-      }
-    };
+    const raw = await cloudRequestRaw('POST', path, body, null);
+    const tokens = parseAuthResponse(raw);
     await AuthStore.getInstance().saveSession(tokens);
     return tokens;
   }
@@ -240,17 +349,74 @@ export class MockAuthService implements IAuthService {
 }
 
 export class AuthServiceFactory {
-  /** 默认：有 USE_MOCK_CLOUD 时用 Mock，否则 HTTP */
   static create(): IAuthService {
-    if (CloudConfig.USE_MOCK) {
+    if (AuthStore.getInstance().isUseMock()) {
       return new MockAuthService();
     }
     return new HttpAuthService();
   }
 }
 
-/** 共享 HTTP 辅助：供 Auth / CloudSync 使用 */
+function parseAuthResponse(raw: string): AuthTokens {
+  const obj = JSON.parse(raw) as Record<string, Object>;
+  const userObj = obj['user'] as Record<string, Object>;
+  return {
+    accessToken: `${obj['access_token']}`,
+    refreshToken: `${obj['refresh_token']}`,
+    expiresAt: Number(obj['expires_at'] ?? 0),
+    user: {
+      id: `${userObj['id']}`,
+      email: `${userObj['email']}`,
+      username: `${userObj['username']}`,
+      created_at: Number(userObj['created_at'] ?? 0)
+    }
+  };
+}
+
+function isUnauthorizedMessage(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return m.indexOf('401') >= 0 ||
+    m.indexOf('unauthorized') >= 0 ||
+    m.indexOf('invalid or expired') >= 0 ||
+    m.indexOf('expired token') >= 0 ||
+    m.indexOf('登录已过期') >= 0;
+}
+
+/**
+ * 共享 HTTP 辅助：自动 refresh 临近过期的 access token；
+ * 遇 401 再尝试一次 refresh 后重试。
+ */
 export async function cloudRequest(
+  method: string,
+  path: string,
+  body: object | null,
+  bearer: string | null
+): Promise<string> {
+  const store = AuthStore.getInstance();
+  let token = bearer;
+  if (token && token.length > 0 && !store.isUseMock()) {
+    try {
+      token = await store.ensureFreshAccessToken();
+    } catch (e) {
+      throw e;
+    }
+  }
+  try {
+    return await cloudRequestRaw(method, path, body, token);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : `${e}`;
+    if (token && isUnauthorizedMessage(msg) && store.getRefreshToken() && !store.isUseMock()) {
+      const ok = await store.forceRefresh();
+      if (ok) {
+        return await cloudRequestRaw(method, path, body, store.getAccessToken());
+      }
+    }
+    throw e;
+  }
+}
+
+/** 底层 HTTP（不做 refresh，供 refresh/login 自身使用，避免递归） */
+export async function cloudRequestRaw(
   method: string,
   path: string,
   body: object | null,
@@ -300,6 +466,9 @@ export async function cloudRequest(
         if (result && result.length > 0 && result.length < 200) {
           msg = result;
         }
+      }
+      if (code === 401) {
+        msg = msg.indexOf('401') >= 0 ? msg : `401 ${msg}`;
       }
       throw new Error(msg);
     }

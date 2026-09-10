@@ -5,6 +5,7 @@
     "pages/TerminalPage",
     "pages/FtpBrowserPage",
     "pages/VncSessionPage",
-    "pages/SettingsPage"
+    "pages/SettingsPage",
+    "pages/AccountPage"
   ]
 }

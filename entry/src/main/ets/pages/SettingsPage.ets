@@ -1,4 +1,6 @@
 import { router } from '@kit.ArkUI';
+import { RouteNames } from '../common/Constants';
+import { AuthStore } from '../services/AuthService';
 import { ThemeStore } from '../services/ThemeStore';
 import {
   AccentId,
@@ -22,9 +24,23 @@ struct SettingsPage {
   @State mode: ThemeMode = 'system';
   @State accentId: AccentId = 'blue';
   @State schemeId: TerminalSchemeId = 'classic_dark';
+  @StorageLink('authRev') authRev: number = 0;
+  @State accountSubtitle: string = '';
 
   aboutToAppear(): void {
     this.syncFromStore();
+    this.refreshAccount();
+  }
+
+  private refreshAccount(): void {
+    void this.authRev;
+    const auth = AuthStore.getInstance();
+    if (auth.isLoggedIn()) {
+      const u = auth.getUser();
+      this.accountSubtitle = u ? u.username : '已登录';
+    } else {
+      this.accountSubtitle = '登录以同步主机与设置';
+    }
   }
 
   private syncFromStore(): void {
@@ -88,6 +104,37 @@ struct SettingsPage {
 
       Scroll() {
         Column({ space: 16 }) {
+          this.sectionTitle($r('app.string.account_entry'))
+          Column() {
+            Row() {
+              Column() {
+                Text($r('app.string.account_entry'))
+                  .fontSize(16)
+                  .fontColor(this.textPrimary())
+                  .width('100%')
+                Text(this.accountSubtitle)
+                  .fontSize(13)
+                  .fontColor(this.textSecondary())
+                  .width('100%')
+                  .margin({ top: 4 })
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+              Text('›')
+                .fontSize(20)
+                .fontColor(this.textSecondary())
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+            .onClick(() => {
+              router.pushUrl({ url: RouteNames.ACCOUNT });
+            })
+          }
+          .width('100%')
+          .backgroundColor(this.surfaceCard())
+          .borderRadius($r('app.float.card_radius'))
+          .clip(true)
+
           this.sectionTitle($r('app.string.settings_appearance'))
           Column() {
             this.modeRow('浅色', 'light')

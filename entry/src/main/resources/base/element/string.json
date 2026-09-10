@@ -14,7 +14,7 @@
     },
     {
       "name": "internet_permission_reason",
-      "value": "连接远程 SSH / FTP / VNC 主机需要网络权限"
+      "value": "连接远程主机与云端帐号同步需要网络权限"
     },
     {
       "name": "host_list_title",
@@ -231,6 +231,90 @@
     {
       "name": "theme_mode_system",
       "value": "跟随系统"
+    },
+    {
+      "name": "account_title",
+      "value": "帐号"
+    },
+    {
+      "name": "account_entry",
+      "value": "帐号"
+    },
+    {
+      "name": "account_entry_subtitle",
+      "value": "登录以同步主机与设置"
+    },
+    {
+      "name": "account_auth",
+      "value": "登录 / 注册"
+    },
+    {
+      "name": "account_signed_in",
+      "value": "当前帐号"
+    },
+    {
+      "name": "account_login_tab",
+      "value": "登录"
+    },
+    {
+      "name": "account_register_tab",
+      "value": "注册"
+    },
+    {
+      "name": "account_email",
+      "value": "邮箱"
+    },
+    {
+      "name": "account_username",
+      "value": "用户名"
+    },
+    {
+      "name": "account_login_id",
+      "value": "邮箱或用户名"
+    },
+    {
+      "name": "account_password",
+      "value": "密码"
+    },
+    {
+      "name": "account_login_btn",
+      "value": "登录"
+    },
+    {
+      "name": "account_register_btn",
+      "value": "注册"
+    },
+    {
+      "name": "account_busy",
+      "value": "请稍候…"
+    },
+    {
+      "name": "account_logout",
+      "value": "退出登录"
+    },
+    {
+      "name": "account_sync_now",
+      "value": "立即同步"
+    },
+    {
+      "name": "account_sync_hint",
+      "value": "同步采用 last-write-wins（服务端时间戳）；主机按 id 合并取较新。"
+    },
+    {
+      "name": "account_mock_hint",
+      "value": "当前为 Mock 帐号（离线）。对接云端请将 CloudConfig.USE_MOCK 设为 false。"
+    },
+    {
+      "name": "account_server",
+      "value": "服务器"
+    },
+    {
+      "name": "account_server_hint",
+      "value": "Rust 云端基址（不含尾斜杠）"
+    },
+    {
+      "name": "account_huks_note",
+      "value": "Token 现存储于 preferences，后续将迁入 HUKS 安全存储。本地 HostStore 不受影响，云同步为附加能力。"
     }
   ]
 }

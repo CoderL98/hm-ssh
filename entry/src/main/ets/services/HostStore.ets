@@ -67,6 +67,18 @@ export class HostStore {
     return true;
   }
 
+
+  /** 云同步：整体替换本地列表（additive 云能力，不改变单条 CRUD API） */
+  async replaceAll(hosts: HostConfig[]): Promise<void> {
+    this.hosts = hosts.slice();
+    await this.persist();
+  }
+
+  /** 导出 JSON 数组（云同步 PUT） */
+  exportJson(): HostJson[] {
+    return this.hosts.map((h: HostConfig) => h.toJson());
+  }
+
   private async persist(): Promise<void> {
     if (!this.pref) {
       return;

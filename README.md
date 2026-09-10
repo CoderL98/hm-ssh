@@ -2,7 +2,7 @@
 
 HarmonyOS NEXT 原生远程管理客户端（ArkTS · Stage 模型）。首期面向手机，架构预留平板 / PC / 折叠屏扩展；阔折叠展开横屏时支持「主机列表 + 会话面板」并排。
 
-> **当前里程碑**：主机 CRUD（preferences）、多协议（SSH / FTP / VNC）、自适应窄/宽布局、Mock 会话（SSH 回显 · FTP 内存文件系统 · VNC 占位桌面）。真实协议通过 `ISshSession` / `IFtpSession` / `IVncSession` 接缝后续以 NAPI 接入。
+> **当前里程碑**：主机 CRUD（preferences）、多协议（SSH / FTP / VNC）、自适应窄/宽布局、Mock 会话、**云帐号 + 主机/设置同步**（Rust server + 客户端接缝）。真实协议通过 `ISshSession` / `IFtpSession` / `IVncSession` 接缝后续以 NAPI 接入。
 
 ## 视觉语言
 
@@ -37,13 +37,18 @@ hm-ssh/
 ├── entry/
 │   └── src/main/ets/
 │       ├── entryability/      # EntryAbility
-│       ├── pages/             # Index / HostEdit / Terminal / FtpBrowser / VncSession / Settings
+│       ├── pages/             # Index / HostEdit / Terminal / FtpBrowser / VncSession / Settings / Account
 │       ├── components/        # HostList* / TerminalView / FtpBrowserView / VncSessionView
 │       ├── models/            # HostConfig（含 protocol）
-│       ├── services/          # HostStore、ThemeStore、Ssh/Ftp/Vnc Session（接口 + Mock）
+│       ├── services/          # HostStore、ThemeStore、Auth、CloudSync、Ssh/Ftp/Vnc Session
 │       ├── theme/             # ThemeTokens（强调色 / 终端配色 / 对比度）
 │       ├── layout/            # Breakpoint 断点与分栏比例
-│       └── common/            # 路由常量等
+│       └── common/            # 路由常量、CloudConfig
+├── server/                    # Rust 云端（axum + sqlx + JWT + Argon2）
+│   ├── src/                   # auth / db / cache / routes
+│   ├── migrations/
+│   ├── .env.example
+│   └── README.md
 ├── build-profile.json5
 ├── oh-package.json5
 ├── hvigorfile.ts
@@ -132,6 +137,28 @@ hm-ssh/
 | FTP | 21 |
 | VNC | 5900 |
 
+
+### 帐号与云同步
+
+入口：**设置 → 帐号**（`AccountPage`）。默认 `CloudConfig.USE_MOCK = true`（离线 Mock 登录）；对接真实服务时改为 `false`，并配置服务器基址（帐号页或 `CloudConfig.DEFAULT_BASE_URL`）。
+
+| 组件 | 说明 |
+| --- | --- |
+| `AuthService` | `IAuthService` + `HttpAuthService` / `MockAuthService`；JWT 存 preferences（**HUKS 为后续**） |
+| `CloudSyncService` | `GET/PUT /api/v1/sync/hosts` 与 `/settings`；登录后可「立即同步」 |
+| `server/` | Rust 云端：注册/登录、SQLite（默认可换 PG/MySQL）、内存缓存（可换 Redis） |
+
+**合并策略（last-write-wins）**：以服务端资源级 `updated_at`（Unix ms）为权威；主机列表按 `id` 合并，同一 id 取本地/远端 `updatedAt` 较大者；设置 JSON 整包采用较新一侧。本地 `HostStore` 仍是离线真相源，云同步为 **additive**。
+
+启动云端见 [`server/README.md`](./server/README.md)：
+
+```bash
+cd server && cp .env.example .env   # 设置 JWT_SECRET
+cargo run                          # http://0.0.0.0:8080
+```
+
+环境变量摘要：`DATABASE_URL`（`sqlite:` / `postgres://` / `mysql://`）、`JWT_SECRET`、可选 `REDIS_URL`、`BIND`、`CORS_ORIGINS`。
+
 ## Mock vs 真实（NAPI）计划
 
 | 能力 | 当前 | 下一步 |
@@ -140,16 +167,18 @@ hm-ssh/
 | FTP | `MockFtpSession` 内存 FS | NAPI + **libcurl** 或自研 FTP：LIST / CWD / RETR / STOR |
 | VNC | `MockVncSession` 占位画布 + 输入 stub | NAPI + **RFB** 解码（LibVNCClient 等）+ Surface 渲染与键鼠注入 |
 | 凭据 | preferences 明文 | HUKS 加密；known_hosts / 证书校验 |
+| 云帐号 Token | preferences | HUKS；可选 refresh 轮换 |
 
 工厂类（`SshSessionFactory` / `FtpSessionFactory` / `VncSessionFactory`）可按编译开关切换 Mock / Native，业务 UI 无需改动。
 
 ## 已知差距
 
 - 非真实网络协议，仅 Mock  
-- 密码明文 preferences（仅演示）  
+- 密码明文 preferences（仅演示）；云 Token 亦在 preferences（待 HUKS）  
 - VNC 无真实像素流；FTP 无真实传输与 TLS  
 - 图标为占位；平板 / PC 多窗口与键鼠快捷键尚未打磨  
 - 终端 ANSI 彩色与完整光标渲染尚未展开（当前 bg/fg/cursor 基础令牌）  
+- 云同步默认 Mock；真机需可达的 `server` 地址与 `USE_MOCK=false`  
 - 未在本环境执行 DevEco/hvigor 实机编译（请以 DevEco 同步结果为准）
 
 ## 许可

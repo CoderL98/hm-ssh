@@ -3,6 +3,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { HostStore } from '../services/HostStore';
 import { ThemeStore } from '../services/ThemeStore';
+import { AuthStore } from '../services/AuthService';
+import { CloudSyncServiceFactory } from '../services/CloudSyncService';
 
 const DOMAIN = 0x0000;
 const TAG = 'HmSSH';
@@ -11,6 +13,7 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
       AppStorage.setOrCreate('themeRev', 0);
+      AppStorage.setOrCreate('authRev', 0);
     } catch (_e) {
       // ignore
     }
@@ -31,9 +34,11 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
     Promise.all([
       HostStore.getInstance().init(this.context),
-      ThemeStore.getInstance().init(this.context)
+      ThemeStore.getInstance().init(this.context),
+      AuthStore.getInstance().init(this.context),
+      CloudSyncServiceFactory.init(this.context)
     ]).then(() => {
-      hilog.info(DOMAIN, TAG, 'HostStore + ThemeStore ready');
+      hilog.info(DOMAIN, TAG, 'HostStore + ThemeStore + Auth + CloudSync ready');
     }).catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Store init failed %{public}s', JSON.stringify(err));
     });

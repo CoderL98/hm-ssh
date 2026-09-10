@@ -29,3 +29,11 @@ material/
 **/CMakeFiles/
 **/CMakeCache.txt
 **/cmake_install.cmake
+
+# Rust server
+server/target/
+server/.env
+server/config.toml
+server/*.db
+server/*.db-*
+**/.env

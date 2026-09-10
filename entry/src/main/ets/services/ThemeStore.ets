@@ -14,6 +14,12 @@ const KEY_ACCENT = 'accent_id';
 const KEY_TERMINAL = 'terminal_scheme_id';
 const THEME_REV_KEY = 'themeRev';
 
+export interface CloudSettingsJson {
+  theme_mode?: string;
+  accent_id?: string;
+  terminal_scheme_id?: string;
+}
+
 /**
  * 主题偏好：外观模式、强调色、终端配色。
  * 变更后写入 AppStorage.themeRev，驱动页面刷新令牌。
@@ -105,6 +111,34 @@ export class ThemeStore {
   async setTerminalSchemeId(id: TerminalSchemeId): Promise<void> {
     this.terminalSchemeId = id;
     await this.persist(KEY_TERMINAL, id);
+    this.publishTokens();
+  }
+
+
+  /** 导出可云同步的设置 JSON */
+  exportCloudSettings(): CloudSettingsJson {
+    return {
+      theme_mode: this.themeMode,
+      accent_id: this.accentId,
+      terminal_scheme_id: this.terminalSchemeId
+    };
+  }
+
+  /** 应用云端设置（整包 last-write-wins） */
+  async applyCloudSettings(data: CloudSettingsJson): Promise<void> {
+    if (data.theme_mode) {
+      this.themeMode = ThemeStore.parseMode(data.theme_mode);
+      await this.persist(KEY_MODE, this.themeMode);
+    }
+    if (data.accent_id) {
+      this.accentId = ThemeStore.parseAccent(data.accent_id);
+      await this.persist(KEY_ACCENT, this.accentId);
+    }
+    if (data.terminal_scheme_id) {
+      this.terminalSchemeId = ThemeStore.parseTerminal(data.terminal_scheme_id);
+      await this.persist(KEY_TERMINAL, this.terminalSchemeId);
+    }
+    this.applyColorMode();
     this.publishTokens();
   }
 

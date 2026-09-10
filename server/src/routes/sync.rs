@@ -1,0 +1,211 @@
+use crate::db;
+use crate::error::{AppError, AppResult};
+use crate::routes::AuthUser;
+use crate::state::AppState;
+use axum::extract::State;
+use axum::Json;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+#[derive(Debug, Serialize)]
+pub struct SyncGetResponse {
+    pub data: Value,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SyncPutRequest {
+    pub data: Value,
+    /// Optional client timestamp (ms); server still assigns authoritative updated_at.
+    pub client_updated_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SyncPutResponse {
+    pub data: Value,
+    pub updated_at: i64,
+}
+
+pub async fn get_hosts(
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+) -> AppResult<Json<SyncGetResponse>> {
+    get_sync(&state, &claims.sub, true).await
+}
+
+pub async fn put_hosts(
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+    Json(body): Json<SyncPutRequest>,
+) -> AppResult<Json<SyncPutResponse>> {
+    put_sync(&state, &claims.sub, body, true).await
+}
+
+pub async fn get_settings(
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+) -> AppResult<Json<SyncGetResponse>> {
+    get_sync(&state, &claims.sub, false).await
+}
+
+pub async fn put_settings(
+    State(state): State<AppState>,
+    AuthUser(claims): AuthUser,
+    Json(body): Json<SyncPutRequest>,
+) -> AppResult<Json<SyncPutResponse>> {
+    put_sync(&state, &claims.sub, body, false).await
+}
+
+async fn get_sync(
+    state: &AppState,
+    user_id: &str,
+    hosts: bool,
+) -> AppResult<Json<SyncGetResponse>> {
+    let blob = if hosts {
+        db::get_hosts(&state.pool, user_id).await?
+    } else {
+        db::get_settings(&state.pool, user_id).await?
+    };
+    match blob {
+        Some(b) => {
+            let mut data: Value = serde_json::from_str(&b.payload).unwrap_or(Value::Null);
+            if hosts {
+                data = strip_host_secrets(data);
+            }
+            Ok(Json(SyncGetResponse {
+                data,
+                updated_at: b.updated_at,
+            }))
+        }
+        None => Ok(Json(SyncGetResponse {
+            data: if hosts {
+                Value::Array(vec![])
+            } else {
+                Value::Object(Default::default())
+            },
+            updated_at: 0,
+        })),
+    }
+}
+
+async fn put_sync(
+    state: &AppState,
+    user_id: &str,
+    body: SyncPutRequest,
+    hosts: bool,
+) -> AppResult<Json<SyncPutResponse>> {
+    let _ = body.client_updated_at;
+    let mut data = body.data;
+    if data.is_null() {
+        return Err(AppError::BadRequest(
+            "sync data must not be null; use [] for hosts or {} for settings".into(),
+        ));
+    }
+    if hosts {
+        if !data.is_array() {
+            return Err(AppError::BadRequest(
+                "hosts data must be a JSON array".into(),
+            ));
+        }
+        let len = data.as_array().map(|a| a.len()).unwrap_or(0);
+        if len > state.config.max_sync_hosts {
+            return Err(AppError::BadRequest(format!(
+                "hosts list too large (max {})",
+                state.config.max_sync_hosts
+            )));
+        }
+        // Defense in depth: never persist plaintext secrets server-side
+        data = strip_host_secrets(data);
+    } else if !data.is_object() {
+        return Err(AppError::BadRequest(
+            "settings data must be a JSON object".into(),
+        ));
+    }
+    let payload = serde_json::to_string(&data)
+        .map_err(|e| AppError::BadRequest(format!("invalid json: {e}")))?;
+    // Cap persisted blob (~ max body); reject absurd payloads early
+    if payload.len() > state.config.max_body_bytes {
+        return Err(AppError::BadRequest(format!(
+            "sync payload too large (max {} bytes)",
+            state.config.max_body_bytes
+        )));
+    }
+    let blob = if hosts {
+        db::put_hosts(&state.pool, user_id, &payload).await?
+    } else {
+        db::put_settings(&state.pool, user_id, &payload).await?
+    };
+    Ok(Json(SyncPutResponse {
+        data,
+        updated_at: blob.updated_at,
+    }))
+}
+
+/// Clear plaintext password / privateKey (and snake_case variants).
+/// Keeps passwordEnc / privateKeyEnc (client-side vault ciphertext) intact.
+pub(crate) fn strip_host_secrets(data: Value) -> Value {
+    match data {
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| match item {
+                    Value::Object(mut map) => {
+                        for key in ["password", "privateKey", "private_key"] {
+                            if map.contains_key(key) {
+                                map.insert(key.to_string(), json!(""));
+                            }
+                        }
+                        Value::Object(map)
+                    }
+                    other => other,
+                })
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn strip_clears_password_and_keys() {
+        let input = json!([
+            {"id": "h1", "password": "secret", "privateKey": "KEY", "private_key": "KEY2", "name": "demo"},
+            {"id": "h2", "name": "plain"}
+        ]);
+        let out = strip_host_secrets(input);
+        let arr = out.as_array().unwrap();
+        assert_eq!(arr[0]["password"], "");
+        assert_eq!(arr[0]["privateKey"], "");
+        assert_eq!(arr[0]["private_key"], "");
+        assert_eq!(arr[0]["name"], "demo");
+        assert_eq!(arr[1]["name"], "plain");
+        assert!(arr[1].get("password").is_none());
+    }
+
+    #[test]
+    fn strip_keeps_password_enc_fields() {
+        let input = json!([{
+            "id": "h1",
+            "password": "secret",
+            "privateKey": "KEY",
+            "passwordEnc": "cv1:salt:iv:cipher",
+            "privateKeyEnc": "cv1:salt:iv:cipher2"
+        }]);
+        let out = strip_host_secrets(input);
+        let arr = out.as_array().unwrap();
+        assert_eq!(arr[0]["password"], "");
+        assert_eq!(arr[0]["privateKey"], "");
+        assert_eq!(arr[0]["passwordEnc"], "cv1:salt:iv:cipher");
+        assert_eq!(arr[0]["privateKeyEnc"], "cv1:salt:iv:cipher2");
+    }
+
+    #[test]
+    fn strip_non_array_passthrough() {
+        let obj = json!({"password": "x"});
+        assert_eq!(strip_host_secrets(obj.clone()), obj);
+    }
+}

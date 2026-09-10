@@ -1,0 +1,11 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/HostEditPage",
+    "pages/TerminalPage",
+    "pages/FtpBrowserPage",
+    "pages/VncSessionPage",
+    "pages/SettingsPage",
+    "pages/AccountPage"
+  ]
+}

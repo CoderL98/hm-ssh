@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "鸿蒙SSH 主模块",
+  "main": "",
+  "author": "CoderL98",
+  "license": "MIT",
+  "dependencies": {
+    "libhmssh_native.so": "file:./src/main/cpp/types/libhmssh_native"
+  }
+}

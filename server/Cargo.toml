@@ -1,0 +1,48 @@
+[package]
+name = "hm-ssh-server"
+version = "0.1.0"
+edition = "2021"
+description = "HmSSH cloud sync API — auth + hosts/settings sync"
+license = "MIT"
+authors = ["CoderL98"]
+
+[dependencies]
+axum = { version = "0.8", features = ["json", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jsonwebtoken = "9"
+argon2 = "0.5"
+sqlx = { version = "0.8", default-features = false, features = [
+  "runtime-tokio",
+  "tls-rustls",
+  "any",
+  "sqlite",
+  "postgres",
+  "mysql",
+  "migrate",
+  "chrono",
+] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "compression-br"] }
+tower = "0.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde", "clock"] }
+dotenvy = "0.15"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+moka = { version = "0.12", features = ["future"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
+toml = "0.8"
+
+[features]
+default = ["redis-cache"]
+redis-cache = ["dep:redis"]
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+serde_json = "1"
+
